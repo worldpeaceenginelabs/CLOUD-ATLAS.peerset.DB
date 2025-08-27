@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import {joinRoom} from 'trystero'
+  import {joinRoom, selfId} from 'trystero'
   import { bucketStore, uuidStore, recordStore } from './bucketStore.js';
   import { get } from 'svelte/store';
   
@@ -23,14 +23,14 @@
     // 0️⃣ On every new peer join → send our bucket list ONLY to that peer
     room.onPeerJoin((peerId) => {
       bucketStore.subscribe(localBuckets => {
-        sendmessage('HELLO ' + peerId, peerId);
+        sendmessage('HELLO here is ' + selfId + 'and you are: ' + peerId, peerId);
         sendBucketList(localBuckets, peerId);
         console.log('Sent initial bucket list to new peer', peerId);
       })();
     });
     
     getmessage((message, peerId) => {
-      console.log('Received message from peer:', peerId, 'Message: ', message);
+      console.log(new Date().toISOString() , peerId, ':', message);
       console.log('Hash list:', get(bucketStore));
       console.log('UUID list:', get(uuidStore));
       console.log('Record list:', get(recordStore));
