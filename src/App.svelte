@@ -3,6 +3,7 @@
   import { get } from 'svelte/store';
   import { joinRoom, selfId } from 'trystero/torrent';
   import { bucketStore, uuidStore, recordStore } from './tempstores.js';
+  import UI from './UI.svelte';
   import { getAllRecords, saveRecords, deleteRecord } from './db.js';
   import { computeBucketHash } from './secp256k1.js';
   import { TOTAL_BUCKETS, getBucketForDate, isBucketActive, getActiveBuckets } from './bucketUtils.js';
@@ -21,6 +22,13 @@
   // --- Idle detection for bucket refresh ---
   const IDLE_TIMEOUT = 5000; // ms
   const lastActivity: Record<string, number> = {};
+
+  // --- UI sync stats ---
+  let statLocalRecords = 0;
+  let statReceivedRecords = 0;
+  let statBucketsExchanged = 0;
+  let statUUIDsExchanged = 0;
+  let statRecordsExchanged = 0;
   
   // --- On mount, setup Trystero and sync workflow ---
   onMount(() => {
@@ -28,41 +36,58 @@
     [sendBucketList, getBucketList] = room.makeAction('bucketList');
     [sendBucketDiff, getBucketDiff] = room.makeAction('bucketDiff');
     [sendUUIDs, getUUIDs] = room.makeAction('bucketUUIDs');
-    [sendRequestRecords, getRequestRecords] = room.makeAction('requestRecords');
+    [sendRequestRecords, getRequestRecords] = room.makeAction('reqRecs');
     [sendRecords, getRecords] = room.makeAction('sendRecords');
   
     // 1️⃣ Send bucket list on every new peer join (only to that peer)
     room.onPeerJoin(peerId => {
+      console.log('[1/8] Peer joined. Sending our bucket list.');
       bucketStore.subscribe(localBuckets => {
         sendBucketList(localBuckets, peerId);
-        console.log('Sent initial bucket list to', peerId);
+        console.log('[1/8] Bucket list sent to peer', peerId);
+        statBucketsExchanged += Object.keys((localBuckets as any) || {}).length;
       })();
     });
   
     // 2️⃣ Receive peer's bucket list → reply with our differing hashes
     getBucketList((peerBuckets, peerId) => {
+      console.log('[2/8] Received bucket list. Computing differences.');
       bucketStore.subscribe(localBuckets => {
         const differing: Record<string, string> = {};
         for (let bucketId in peerBuckets) {
           if (localBuckets[bucketId] !== peerBuckets[bucketId]) differing[bucketId] = localBuckets[bucketId];
         }
-        if (Object.keys(differing).length > 0) sendBucketDiff(differing, peerId);
+        if (Object.keys(differing).length > 0) {
+          console.log('[3/8] Sending our differing bucket hashes.');
+          sendBucketDiff(differing, peerId);
+        } else {
+          console.log('[3/8] No differing hashes to send.');
+        }
+        statBucketsExchanged += Object.keys((peerBuckets as any) || {}).length;
       })();
     });
   
     // 3️⃣ Receive differing hashes → send UUIDs of local records in those buckets
     getBucketDiff((differingHashes, peerId) => {
+      console.log('[4/8] Received differing hashes. Preparing UUID lists.');
       uuidStore.subscribe(localUUIDs => {
         const uuidsToSend: Record<string, string[]> = {};
         for (let bucketId in differingHashes) {
           if (localUUIDs[bucketId]) uuidsToSend[bucketId] = localUUIDs[bucketId];
         }
-        if (Object.keys(uuidsToSend).length > 0) sendUUIDs(uuidsToSend, peerId);
+        if (Object.keys(uuidsToSend).length > 0) {
+          console.log('[5/8] Sending UUIDs for differing buckets.');
+          sendUUIDs(uuidsToSend, peerId);
+        } else {
+          console.log('[5/8] No UUIDs to send for differing buckets.');
+        }
+        statUUIDsExchanged += (Object.values(uuidsToSend) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
       })();
     });
   
     // 4️⃣ Receive UUIDs → request missing full records
     getUUIDs((peerUUIDs, peerId) => {
+      console.log('[6/8] Received UUIDs. Checking for missing records.');
       uuidStore.subscribe(localUUIDs => {
         recordStore.subscribe(localRecords => {
           const missingUUIDs: string[] = [];
@@ -72,19 +97,27 @@
               if (!allLocal.includes(uuid)) missingUUIDs.push(uuid);
             }
           }
-          if (missingUUIDs.length > 0) sendRequestRecords(missingUUIDs, peerId);
+          if (missingUUIDs.length > 0) {
+            console.log('[7/8] Requesting missing full records.', missingUUIDs.length);
+            sendRequestRecords(missingUUIDs, peerId);
+          } else {
+            console.log('[7/8] No missing records to request.');
+          }
+          statUUIDsExchanged += (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
         })();
       })();
     });
   
     // 5️⃣ Receive record requests (UUIDs) → send full records
     getRequestRecords((uuids, peerId) => {
+      console.log('[8/8] Peer requested records. Sending payload.');
       recordStore.subscribe(localRecords => {
         const payload: Record<string, any> = {};
         for (const id of uuids) {
           if (localRecords[id]) payload[id] = localRecords[id];
         }
         if (Object.keys(payload).length > 0) sendRecords(payload, peerId);
+        statRecordsExchanged += Object.keys(payload).length;
       })();
     });
 
@@ -114,6 +147,9 @@
   
       // Update last activity timestamp for idle detection
       lastActivity[peerId] = Date.now();
+
+      // Update UI counters
+      statReceivedRecords += Object.keys(records || {}).length;
     });
   
     // 7️⃣ Idle peer check → recompute bucket hashes (rolling window) → broadcast if changed
@@ -188,4 +224,11 @@
     setInterval(pruneOldRecords, 5*60*1000); // every 5 minutes
   });
   </script>
+  
+  <UI
+    {statReceivedRecords}
+    {statBucketsExchanged}
+    {statUUIDsExchanged}
+    {statRecordsExchanged}
+  />
   
