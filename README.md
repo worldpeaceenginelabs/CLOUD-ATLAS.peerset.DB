@@ -45,7 +45,7 @@ Only you have the Nostr keys in possession but this service offers their recover
 # Features
 
 - Network Web UI
-  <img width="1919" height="1019" alt="image" src="https://github.com/user-attachments/assets/92bbe24d-91e8-4d9a-8fc0-ab15160bda0e" />
+<img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/1d76574e-89d7-445c-b90a-2e70ea67ea04" />
 
 - Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)
 - Record creation with UUID, timestamp, creator key, geolocation, text, link, hash, and signature
