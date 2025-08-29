@@ -3,12 +3,46 @@
 # Peerset
 
 **Short Description:**  
-A decentralized peer-to-peer record synchronization system, where every record is signed, hashed, moderated, locally stored and synchronized across connected peers. Users can log in with Bech32 keys (Nostr npub/nsec), create records, and participate in a fully self moderated swarm with automatic deduplication, missing-range detection, and session enforcement.
+A decentralized peer-to-peer record synchronization system, on top of https://github.com/dmotz/trystero where every record is signed, hashed, moderated, locally stored and synchronized across connected peers. Users can log in with Bech32 keys (Nostr npub/nsec), create records, and participate in a fully self moderated swarm with automatic deduplication, missing-range detection, and session enforcement.
 
 ## Get Your Keys
 Only you have the Nostr keys in possession but this service offers their recovery via your email address for free: [NSTART.ME](https://nstart.me/)
+<br><br><br>
 
-## Features
+# Workflow
+
+1. **Peer joins**  
+   - Send local bucket hashes to the new peer.
+
+2. **Compare bucket hashes**  
+   - Detect which buckets differ between peers.
+
+3. **Send UUIDs**  
+   - For differing buckets, send the UUIDs of local records.
+
+4. **Request missing full records**  
+   - Receive missing records and update:
+     - `recordStore` (in-memory)
+     - `uuidStore` (UUID mapping per bucket)
+     - IndexedDB (persistent storage)
+
+5. **Update bucket hashes periodically**  
+   - Idle peers trigger hash recomputation.
+   - Broadcast updated bucket hashes if changes are detected.
+
+6. **Prune old records**  
+   - Automatically delete records older than 90 days.
+
+## Granularity
+
+- Buckets are **daily** by default (`day1`, `day2`, …).  
+- Can be adjusted to **quarter-day, hourly, or any custom interval** by modifying:
+  - `getBucketForDate()`
+  - `TOTAL_BUCKETS`
+- Smaller intervals increase sync granularity but also metadata size and action frequency.
+<br><br><br>
+
+# Features
 
 - Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)
 - Record creation with UUID, timestamp, creator key, geolocation, text, link, hash, and signature
