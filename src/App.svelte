@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { joinRoom, selfId } from 'trystero/torrent';
-  import { bucketStore, uuidStore, recordStore } from './BucketStore.js';
+  import { bucketStore, uuidStore, recordStore } from './tempstores.js';
   import { getAllRecords, saveRecords, deleteRecord } from './db.js';
   import { computeBucketHash } from './secp256k1.js';
   import { TOTAL_BUCKETS, getBucketForDate, isBucketActive } from './bucketUtils.js';

@@ -12,7 +12,7 @@ export const TOTAL_BUCKETS = 90;
  * Example output: "day240"
  */
 export function getBucketForDate(date = new Date()) {
-  const diffMs = date - START_DATE;
+  const diffMs = date.getTime() - START_DATE.getTime();
   const dayNumber = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
   return `day${dayNumber}`;
 }
@@ -23,7 +23,7 @@ export function getBucketForDate(date = new Date()) {
  */
 export function isBucketActive(bucketName) {
   const bucketDay = parseInt(bucketName.replace('day', ''), 10);
-  const latestDay = Math.floor((new Date() - START_DATE) / (1000 * 60 * 60 * 24)) + 1;
+  const latestDay = Math.floor((Date.now() - START_DATE.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   return bucketDay > latestDay - TOTAL_BUCKETS;
 }
 
@@ -32,7 +32,7 @@ export function isBucketActive(bucketName) {
  * Returns an array like ["day211", "day212", ..., "day300"]
  */
 export function getActiveBuckets() {
-  const latestDay = Math.floor((new Date() - START_DATE) / (1000 * 60 * 60 * 24)) + 1;
+  const latestDay = Math.floor((Date.now() - START_DATE.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const startDay = Math.max(1, latestDay - TOTAL_BUCKETS + 1);
   const buckets = [];
   for (let i = startDay; i <= latestDay; i++) {

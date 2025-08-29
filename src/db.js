@@ -1,6 +1,6 @@
 // records.js
 import { openDB } from 'idb';
-import { recordStore, uuidStore } from './BucketStore.js';
+import { recordStore, uuidStore } from './tempstores.js';
 import { getBucketForDate } from './bucketUtils.js';
 
 // --- IndexedDB helpers ---
