@@ -1,4 +1,5 @@
 import * as secp from '@noble/secp256k1';
+
 const { schnorr } = secp;
 
 export async function sha256(msg: Uint8Array): Promise<Uint8Array> {
@@ -55,4 +56,75 @@ export async function verifySchnorr(sigHex: string, msgHash: Uint8Array, pubHex:
   sigBytes.fill(0);
   pubBytes.fill(0);
   return ok;
+}
+
+// ---------------- Bech32 decoder (minimal, no deps) ----------------
+const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+function bech32Decode(str: string) {
+  const lowered = str.toLowerCase();
+  const pos = lowered.lastIndexOf('1');
+  if (pos < 1) throw new Error('Invalid Bech32 string');
+
+  const data = lowered
+    .slice(pos + 1)
+    .split('')
+    .map((c) => {
+      const index = CHARSET.indexOf(c);
+      if (index === -1) throw new Error('Invalid character in Bech32 string');
+      return index;
+    });
+
+  return data;
+}
+
+// convert 5-bit words to 8-bit bytes
+function fromWords(words: number[]): Uint8Array {
+  let buffer = 0;
+  let bits = 0;
+  const bytes: number[] = [];
+
+  for (const w of words) {
+    buffer = (buffer << 5) | w;
+    bits += 5;
+    while (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+// public export
+export function decodeBech32Key(bech32Str: string): string {
+  const words = bech32Decode(bech32Str);
+  const bytes = fromWords(words);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Compute a deterministic hash for a bucket
+ * @param {string[]} uuids - UUIDs in this bucket
+ * @param {Object} records - optional: full record map keyed by UUID
+ * @returns {Promise<string>} hex hash string
+ */
+export async function computeBucketHash(uuids = [], records = {}) {
+  // sort UUIDs to ensure deterministic order
+  const sortedUUIDs = uuids.slice().sort();
+
+  // combine UUIDs + optional record data
+  const combinedStr = sortedUUIDs.map(uuid => {
+    const record = records[uuid];
+    return record ? JSON.stringify(record) : uuid;
+  }).join('|');
+
+  // convert string to Uint8Array
+  const encoder = new TextEncoder();
+  const combinedBytes = encoder.encode(combinedStr);
+
+  // hash using secp256k1 sha256
+  const hashBytes = await sha256(combinedBytes);
+  return bytesToHex(hashBytes);
 }

@@ -1,29 +1,33 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { joinRoom, selfId } from 'trystero/torrent';
   import { bucketStore, uuidStore, recordStore } from './BucketStore.js';
-  import { addRecord } from './addRecord.js';
   import { getAllRecords, saveRecords, deleteRecord } from './db.js';
-  import { computeBucketHash } from './hash.js';
+  import { computeBucketHash } from './secp256k1.js';
   import { TOTAL_BUCKETS, getBucketForDate, isBucketActive } from './bucketUtils.js';
   
+  // --- Trystero config ---
   const config = { appId: 'testpeer' };
   const room = joinRoom(config, 'testroom741369');
   
+  // --- Actions ---
   let sendBucketList, getBucketList;
   let sendUUIDs, getUUIDs;
   let sendRecords, getRecords;
   
+  // --- Idle detection for bucket refresh ---
   const IDLE_TIMEOUT = 5000; // ms
-  const lastActivity = {}; // peerId -> timestamp
+  const lastActivity: Record<string, number> = {};
   
+  // --- On mount, setup Trystero and sync workflow ---
   onMount(() => {
-    // --- 0️⃣ Initialize Trystero actions ---
+    // 0️⃣ Initialize Trystero actions
     [sendBucketList, getBucketList] = room.makeAction('bucketList');
     [sendUUIDs, getUUIDs] = room.makeAction('bucketUUIDs');
     [sendRecords, getRecords] = room.makeAction('fullRecords');
   
-    // --- 1️⃣ Send bucket list on new peer join ---
+    // 1️⃣ Send bucket list on every new peer join (only to that peer)
     room.onPeerJoin(peerId => {
       bucketStore.subscribe(localBuckets => {
         sendBucketList(localBuckets, peerId);
@@ -31,10 +35,10 @@
       })();
     });
   
-    // --- 2️⃣ Receive bucket list → send differing hashes ---
+    // 2️⃣ Receive bucket list → send differing hashes
     getBucketList((peerBuckets, peerId) => {
       bucketStore.subscribe(localBuckets => {
-        const differing = {};
+        const differing: Record<string, string> = {};
         for (let bucketId in peerBuckets) {
           if (localBuckets[bucketId] !== peerBuckets[bucketId]) differing[bucketId] = localBuckets[bucketId];
         }
@@ -42,10 +46,10 @@
       })();
     });
   
-    // --- 3️⃣ Receive differing hashes → send UUIDs ---
+    // 3️⃣ Receive differing hashes → send UUIDs of local records in those buckets
     getBucketList((differingHashes, peerId) => {
       uuidStore.subscribe(localUUIDs => {
-        const uuidsToSend = {};
+        const uuidsToSend: Record<string, string[]> = {};
         for (let bucketId in differingHashes) {
           if (localUUIDs[bucketId]) uuidsToSend[bucketId] = localUUIDs[bucketId];
         }
@@ -53,11 +57,11 @@
       })();
     });
   
-    // --- 4️⃣ Receive UUIDs → request missing full records ---
+    // 4️⃣ Receive UUIDs → request missing full records
     getUUIDs((peerUUIDs, peerId) => {
       uuidStore.subscribe(localUUIDs => {
         recordStore.subscribe(localRecords => {
-          const missingUUIDs = [];
+          const missingUUIDs: string[] = [];
           for (let bucketId in peerUUIDs) {
             for (let uuid of peerUUIDs[bucketId]) {
               const allLocal = (localUUIDs[bucketId]||[]).concat(Object.keys(localRecords));
@@ -69,13 +73,15 @@
       })();
     });
   
-    // --- 5️⃣ Receive full records → store locally + IndexedDB + update lastActivity ---
+    // 5️⃣ Receive full records → update stores + IndexedDB + lastActivity
     getRecords(async (records, peerId) => {
+      // Update in-memory recordStore
       recordStore.update(localRecords => {
         for (let uuid in records) localRecords[uuid] = records[uuid];
         return localRecords;
       });
   
+      // Update UUIDs per bucket
       uuidStore.update(localUUIDs => {
         for (let uuid in records) {
           const bucketId = records[uuid].bucketId;
@@ -85,54 +91,82 @@
         return localUUIDs;
       });
   
+      // Persist to IndexedDB
       await saveRecords(records);
   
       // Update last activity timestamp for idle detection
       lastActivity[peerId] = Date.now();
     });
   
-    // --- 6️⃣ Check idle peers and broadcast updated bucket list if changed ---
+    // 6️⃣ Idle peer check → recompute bucket hashes → broadcast if changed
     const checkIdlePeers = () => {
       const now = Date.now();
       for (let peerId in lastActivity) {
         if (now - lastActivity[peerId] > IDLE_TIMEOUT) {
-          // Peer considered synced
-          delete lastActivity[peerId];
+          delete lastActivity[peerId]; // consider synced
   
           let bucketListChanged = false;
   
-          // Recompute bucket hashes
-          bucketStore.update(localBuckets => {
-            const allRecords = Object.values(recordStore);
-            const bucketMap = {};
-  
-            allRecords.forEach(r => {
+          // Recompute bucket hashes asynchronously
+          (async () => {
+            const localBuckets = get(bucketStore) as Record<string, string>;
+            const recordsMap = get(recordStore) as Record<string, any>;
+            const allRecords = Object.values(recordsMap) as any[];
+
+            const bucketMap: Record<string, string[]> = {};
+            allRecords.forEach((r: any) => {
               if (!bucketMap[r.bucketId]) bucketMap[r.bucketId] = [];
               bucketMap[r.bucketId].push(r.uuid);
             });
-  
-            const newBucketHashes = {};
+
+            const newBucketHashes: Record<string, string> = {};
             for (let i = 1; i <= TOTAL_BUCKETS; i++) {
               const bucketId = `day${i}`;
-              newBucketHashes[bucketId] = computeBucketHash(bucketMap[bucketId]||[], 
-                Object.fromEntries(allRecords.map(r => [r.uuid,r])));
-              if (newBucketHashes[bucketId] !== localBuckets[bucketId]) bucketListChanged = true;
+              newBucketHashes[bucketId] = await computeBucketHash(
+                bucketMap[bucketId] || [],
+                Object.fromEntries(allRecords.map((r: any) => [r.uuid, r]))
+              );
             }
-  
-            return newBucketHashes;
-          });
-  
-          // Broadcast if changed
-          if (bucketListChanged) {
-          bucketStore.subscribe(localBuckets => {
-          sendBucketList(localBuckets); // broadcast to all peers
-            })();
-          }
+
+            // Compare and update
+            for (const k in newBucketHashes) {
+              if (newBucketHashes[k] !== localBuckets[k]) { bucketListChanged = true; break; }
+            }
+            if (bucketListChanged) {
+              bucketStore.set(newBucketHashes as any);
+              sendBucketList(newBucketHashes);
+            }
+          })();
         }
       }
     };
-  
     setInterval(checkIdlePeers, 1000);
+  
+    // 7️⃣ Prune old records every 5 minutes (older than 90 days)
+    const pruneOldRecords = async () => {
+      const now = new Date();
+      const oldestAllowed = new Date(now.getTime() - 90*24*60*60*1000);
+      const allRecords = await getAllRecords();
+  
+      for (let record of allRecords) {
+        const recordDate = new Date(record.createdAt);
+        if (recordDate < oldestAllowed) {
+          await deleteRecord(record.uuid);
+  
+          recordStore.update(r => {
+            delete r[record.uuid];
+            return r;
+          });
+  
+          uuidStore.update(u => {
+            const list = u[record.bucketId];
+            if (list) u[record.bucketId] = list.filter(id => id !== record.uuid);
+            return u;
+          });
+        }
+      }
+    };
+    setInterval(pruneOldRecords, 5*60*1000); // every 5 minutes
   });
   </script>
   
