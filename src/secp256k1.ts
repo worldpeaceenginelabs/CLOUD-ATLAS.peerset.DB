@@ -114,10 +114,18 @@ export async function computeBucketHash(uuids = [], records = {}) {
   // sort UUIDs to ensure deterministic order
   const sortedUUIDs = uuids.slice().sort();
 
+  // stable stringify: recursively sort object keys
+  const stableStringify = (value: any): string => {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return '[' + value.map(v => stableStringify(v)).join(',') + ']';
+    const keys = Object.keys(value).sort();
+    return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
+  };
+
   // combine UUIDs + optional record data
   const combinedStr = sortedUUIDs.map(uuid => {
-    const record = records[uuid];
-    return record ? JSON.stringify(record) : uuid;
+    const record = (records as any)[uuid];
+    return record ? stableStringify(record) : uuid;
   }).join('|');
 
   // convert string to Uint8Array

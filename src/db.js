@@ -44,12 +44,12 @@ export async function addRecord(uuid, data) {
   const bucketId = getBucketForDate();
   const record = { uuid, data, bucketId, createdAt: new Date().toISOString() };
 
-  // Update in-memory stores
-  recordStore.update(records => { records[uuid] = record; return records; });
+  // Update in-memory stores (immutable)
+  recordStore.update(records => ({ ...records, [uuid]: record }));
   uuidStore.update(buckets => {
-    if (!buckets[bucketId]) buckets[bucketId] = [];
-    buckets[bucketId].push(uuid);
-    return buckets;
+    const list = buckets[bucketId] ? [...buckets[bucketId]] : [];
+    list.push(uuid);
+    return { ...buckets, [bucketId]: list };
   });
 
   // Persist to IndexedDB
