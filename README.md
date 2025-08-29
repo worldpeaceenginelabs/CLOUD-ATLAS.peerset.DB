@@ -1,6 +1,8 @@
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a46333c1-dfe7-4f17-8118-f75175d2f819" />
 
-# 🚀 Peerset — The Database From the Future
+# 🚀 peerset.DB — The Database From the Future
+## 👉 **Think of `peerset.DB` as the simplest way to plug a global, self-synchronizing swarm into your app.**
+<br>
 
 **This is basically science fiction.**  
 - Signaling happens **via public BitTorrent trackers**
@@ -13,7 +15,7 @@
   - ✅ Auto-synced across peers
  <br>
  
-This isn’t theory. This is **Peerset**.  
+This isn’t theory. This is **peerset.DB**.  
 A fully self-moderated swarm with:  
 - 🔄 Automatic deduplication  
 - 📦 Missing-range detection for large record sets  
@@ -38,7 +40,7 @@ It stupidly syncs everything you throw at it.
 
 # ❓ WHAT IS IT
 
-Peerset is a new primitive for the decentralized web — think **BitTorrent for live data**, **IPFS without infrastructure**, or **GUN/OrbitDB without servers**.  
+peerset.DB is a new primitive for the decentralized web — think **BitTorrent for live data**, **IPFS without infrastructure**, or **GUN/OrbitDB without servers**.  
 It’s not just storage. It’s not just messaging. It’s a **fully peer-to-peer database layer** that anyone can drop into their app.  
 
 - **Like BitTorrent**, it uses public trackers for signaling — the unbannable backbone of peer discovery.  
@@ -48,7 +50,7 @@ It’s not just storage. It’s not just messaging. It’s a **fully peer-to-pee
 <br>
 
 ### In short:  
-Peerset is a **zero-infrastructure, end-to-end encrypted, self-moderating P2P record synchronization engine**.  
+peerset.DB is a **zero-infrastructure, end-to-end encrypted, self-moderating P2P record synchronization engine**.  
 <br><br><br>
 
 ---
@@ -117,22 +119,22 @@ Only you have the Nostr keys in possession but this service offers their recover
 
 
 1. **Rename the file**  
-   Rename `app.svelte` to `peerset.svelte`.
+   Rename `App.svelte` to `PeersetDB.svelte`.
 
-2. **Move it into the right folder in your existing plain svelte project**  
-   Copy `peerset.svelte` into: /src/peerset/
+2. **Move all components into the a folder in your existing plain svelte project**  
+   Copy `PeersetDB.svelte` into: /src/peerset/
 
 3. **import it in your main `app.svelte`**  
 Example:
 
 ```svelte
 <script>
-  import Peerset from './peerset/peerset.svelte';
+  import PeersetDB from './peerset/PeersetDB.svelte';
 </script>
 
 <main>
   <h1>My App</h1>
-  <Peerset />
+  <PeersetDB />
 </main>
 ````
 
@@ -141,11 +143,11 @@ Example:
 
    ```svelte
    <script>
-     import Peerset from './peerset/peerset.svelte';
+     import PeersetDB from './peerset/peerset.svelte';
    </script>
 
    <main>
-     <Peerset style="display:none;" />
+     <PeersetDB style="display:none;" />
    </main>
    ```
 
