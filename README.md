@@ -44,6 +44,9 @@ Only you have the Nostr keys in possession but this service offers their recover
 
 # Features
 
+- Network Web UI
+  <img width="1919" height="1019" alt="image" src="https://github.com/user-attachments/assets/92bbe24d-91e8-4d9a-8fc0-ab15160bda0e" />
+
 - Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)
 - Record creation with UUID, timestamp, creator key, geolocation, text, link, hash, and signature
 - Automatic SHA-256 hashing and secp256k1 signing of records
@@ -57,4 +60,3 @@ Only you have the Nostr keys in possession but this service offers their recover
 - Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
 - Strict state machine for peer handshake and session management (ready, implementation soon)
 - Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
-- Network UI (maybe web UI): Client Status, Swarm Status, Record Status, settings like timeouts, constants, and types. (coming)
