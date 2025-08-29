@@ -1,9 +1,58 @@
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a46333c1-dfe7-4f17-8118-f75175d2f819" />
 
-# Peerset
+# 🚀 Peerset — The Database From the Future
 
-**Short Description:**  
-A decentralized peer-to-peer record synchronization system, on top of https://github.com/dmotz/trystero where every record is signed, hashed, moderated, locally stored and synchronized across connected peers. Users can log in with Bech32 keys (Nostr npub/nsec), create records, and participate in a fully self moderated swarm with automatic deduplication, missing-range detection, and session enforcement.
+**This is basically science fiction.**  
+- Signaling happens **via public BitTorrent trackers**
+- Peers connect **directly via WebRTC**, no servers, no middlemen.   
+- A **peer-to-peer record synchronization system** where every record is:
+  - ✅ Signed  
+  - ✅ SHA-256 hashed  
+  - ✅ Moderated  
+  - ✅ Locally stored  
+  - ✅ Auto-synced across peers
+ <br>
+ 
+This isn’t theory. This is **Peerset**.  
+A fully self-moderated swarm with:  
+- 🔄 Automatic deduplication  
+- 📦 Missing-range detection for large record sets  
+- ⏳ Session enforcement  
+- 🔐 End-to-end encryption and serialization 
+<br>
+
+No servers. No central control. No infrastructure except the **public tracker network** — which is, by design, **unbannable**.  
+Anyone on Earth with a browser can join the swarm and instantly share data with everyone else.  
+<br>
+
+**LIVE DEMO:** Try it yourself — open duplicated windows on your laptop, phone, tablet, or across multiple devices.  
+👉 [cloud-atlas-peerset.pages.dev](https://cloud-atlas-peerset.pages.dev/)  
+It stupidly syncs everything you throw at it.
+<br>
+
+🌍 **It’s science fiction, but you can use it today.**  
+<br><br><br>
+
+---
+<br><br><br>
+
+# ❓ WHAT IS IT
+
+Peerset is a new primitive for the decentralized web — think **BitTorrent for live data**, **IPFS without infrastructure**, or **GUN/OrbitDB without servers**.  
+It’s not just storage. It’s not just messaging. It’s a **fully peer-to-peer database layer** that anyone can drop into their app.  
+
+- **Like BitTorrent**, it uses public trackers for signaling — the unbannable backbone of peer discovery.  
+- **Like IPFS**, it creates a content-addressable network — every record is hashed and signed.  
+- **Like GunDB/OrbitDB**, it’s a distributed database — but without external nodes, bootstrap servers, or infrastructure.  
+- **Unlike all of them**, it’s just a Svelte component / JS bundle — you can throw it on a CDN, drop it in a browser, and the swarm takes care of the rest.  
+<br>
+
+### In short:  
+Peerset is a **zero-infrastructure, end-to-end encrypted, self-moderating P2P record synchronization engine**.  
+<br><br><br>
+
+---
+<br><br><br>
 
 ## Get Your Keys
 Only you have the Nostr keys in possession but this service offers their recovery via your email address for free: [NSTART.ME](https://nstart.me/)
@@ -61,3 +110,64 @@ Only you have the Nostr keys in possession but this service offers their recover
 - [ ] Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
 - [ ] Strict state machine for peer handshake and session management (ready, implementation soon)
 - [ ] Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
+<br><br><br>
+
+
+## 🚀 Usage for developers
+
+
+1. **Rename the file**  
+   Rename `app.svelte` to `peerset.svelte`.
+
+2. **Move it into the right folder in your existing plain svelte project**  
+   Copy `peerset.svelte` into: /src/peerset/
+
+3. **import it in your main `app.svelte`**  
+Example:
+
+```svelte
+<script>
+  import Peerset from './peerset/peerset.svelte';
+</script>
+
+<main>
+  <h1>My App</h1>
+  <Peerset />
+</main>
+````
+
+4. **(Optional) Remove `ui.svelte` and start the element hidden**
+   If you don’t need the UI, you can render the component in hidden state:
+
+   ```svelte
+   <script>
+     import Peerset from './peerset/peerset.svelte';
+   </script>
+
+   <main>
+     <Peerset style="display:none;" />
+   </main>
+   ```
+
+---
+
+### 🔧 Alternative for all other projects (not plain Svelte)
+
+1. Build the project:
+
+   ```bash
+   npm run build
+   ```
+
+2. Get the compiled files from the `dist/` folder.
+
+3. Use them in **any other framework project** (React, Vue, Angular, plain HTML, etc.).
+
+   Example folder after build:
+
+   <img width="1697" height="357" alt="image" src="https://github.com/user-attachments/assets/c2801e46-9082-4389-9adf-fc5a461082e5" />
+
+```
+
+
+
