@@ -29,6 +29,34 @@
   let statBucketsExchanged = 0;
   let statUUIDsExchanged = 0;
   let statRecordsExchanged = 0;
+
+  // --- Per-peer traffic stats ---
+  type Traffic = { buckets: number; uuids: number; requests: number; records: number };
+  type PeerTraffic = Record<string, { sent: Traffic; recv: Traffic }>;
+  let peerTraffic: PeerTraffic = {};
+
+  function ensurePeer(peerId: string) {
+    if (!peerTraffic[peerId]) {
+      peerTraffic[peerId] = {
+        sent: { buckets: 0, uuids: 0, requests: 0, records: 0 },
+        recv: { buckets: 0, uuids: 0, requests: 0, records: 0 }
+      };
+    }
+  }
+  function addPeerCount(peerId: string, dir: 'sent'|'recv', field: keyof Traffic, delta: number) {
+    ensurePeer(peerId);
+    // Replace object to keep Svelte reactive
+    peerTraffic = {
+      ...peerTraffic,
+      [peerId]: {
+        ...peerTraffic[peerId],
+        [dir]: {
+          ...peerTraffic[peerId][dir],
+          [field]: peerTraffic[peerId][dir][field] + delta
+        }
+      }
+    };
+  }
   
   // --- On mount, setup Trystero and sync workflow ---
   onMount(() => {
@@ -39,6 +67,46 @@
     [sendRequestRecords, getRequestRecords] = room.makeAction('reqRecs');
     [sendRecords, getRecords] = room.makeAction('sendRecords');
   
+    // Initial bucket hash computation and broadcast
+    const recomputeAndBroadcast = async () => {
+      const recordsMap = get(recordStore) as Record<string, any>;
+      const allRecords = Object.values(recordsMap) as any[];
+      const bucketMap: Record<string, string[]> = {};
+      allRecords.forEach((r: any) => {
+        if (!bucketMap[r.bucketId]) bucketMap[r.bucketId] = [];
+        bucketMap[r.bucketId].push(r.uuid);
+      });
+      const newBucketHashes: Record<string, string> = {};
+      const active = getActiveBuckets();
+      for (const bucketId of active) {
+        newBucketHashes[bucketId] = await computeBucketHash(
+          bucketMap[bucketId] || [],
+          Object.fromEntries(allRecords.map((r: any) => [r.uuid, r]))
+        );
+      }
+      const current = get(bucketStore) as Record<string, string>;
+      let changed = false;
+      if (Object.keys(current).length !== Object.keys(newBucketHashes).length) changed = true;
+      if (!changed) {
+        for (const k in newBucketHashes) { if (newBucketHashes[k] !== current[k]) { changed = true; break; } }
+      }
+      if (changed) {
+        bucketStore.set(newBucketHashes as any);
+        sendBucketList(newBucketHashes);
+        console.log('[init] Computed and broadcasted bucket hashes.');
+      }
+    };
+
+    // Run once on mount
+    recomputeAndBroadcast();
+
+    // Debounced recompute when records change
+    let recomputeTimer: any;
+    recordStore.subscribe(() => {
+      clearTimeout(recomputeTimer);
+      recomputeTimer = setTimeout(recomputeAndBroadcast, 250);
+    });
+
     // 1️⃣ Send bucket list on every new peer join (only to that peer)
     room.onPeerJoin(peerId => {
       console.log('[1/8] Peer joined. Sending our bucket list.');
@@ -46,6 +114,7 @@
         sendBucketList(localBuckets, peerId);
         console.log('[1/8] Bucket list sent to peer', peerId);
         statBucketsExchanged += Object.keys((localBuckets as any) || {}).length;
+        addPeerCount(peerId, 'sent', 'buckets', Object.keys((localBuckets as any) || {}).length);
       })();
     });
   
@@ -60,10 +129,12 @@
         if (Object.keys(differing).length > 0) {
           console.log('[3/8] Sending our differing bucket hashes.');
           sendBucketDiff(differing, peerId);
+          addPeerCount(peerId, 'sent', 'buckets', Object.keys(differing).length);
         } else {
           console.log('[3/8] No differing hashes to send.');
         }
         statBucketsExchanged += Object.keys((peerBuckets as any) || {}).length;
+        addPeerCount(peerId, 'recv', 'buckets', Object.keys((peerBuckets as any) || {}).length);
       })();
     });
   
@@ -78,10 +149,12 @@
         if (Object.keys(uuidsToSend).length > 0) {
           console.log('[5/8] Sending UUIDs for differing buckets.');
           sendUUIDs(uuidsToSend, peerId);
+          addPeerCount(peerId, 'sent', 'uuids', (Object.values(uuidsToSend) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0));
         } else {
           console.log('[5/8] No UUIDs to send for differing buckets.');
         }
         statUUIDsExchanged += (Object.values(uuidsToSend) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
+        addPeerCount(peerId, 'recv', 'buckets', Object.keys(differingHashes || {}).length);
       })();
     });
   
@@ -100,10 +173,12 @@
           if (missingUUIDs.length > 0) {
             console.log('[7/8] Requesting missing full records.', missingUUIDs.length);
             sendRequestRecords(missingUUIDs, peerId);
+            addPeerCount(peerId, 'sent', 'requests', missingUUIDs.length);
           } else {
             console.log('[7/8] No missing records to request.');
           }
           statUUIDsExchanged += (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
+          addPeerCount(peerId, 'recv', 'uuids', (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0));
         })();
       })();
     });
@@ -118,6 +193,8 @@
         }
         if (Object.keys(payload).length > 0) sendRecords(payload, peerId);
         statRecordsExchanged += Object.keys(payload).length;
+        addPeerCount(peerId, 'recv', 'requests', uuids.length || 0);
+        addPeerCount(peerId, 'sent', 'records', Object.keys(payload).length);
       })();
     });
 
@@ -150,6 +227,7 @@
 
       // Update UI counters
       statReceivedRecords += Object.keys(records || {}).length;
+      addPeerCount(peerId, 'recv', 'records', Object.keys(records || {}).length);
     });
   
     // 7️⃣ Idle peer check → recompute bucket hashes (rolling window) → broadcast if changed
@@ -200,17 +278,24 @@
     const pruneOldRecords = async () => {
       const activeSet = new Set(getActiveBuckets());
       const allRecords = await getAllRecords();
-  
+      console.log('[8/8] Prune start: scanning for records outside active window.', {
+        activeBuckets: Array.from(activeSet).slice(0, 3).join(', ') + ' …',
+        totalRecords: allRecords.length
+      });
+
+      let prunedCount = 0;
       for (let record of allRecords) {
         if (!activeSet.has(record.bucketId)) {
+          console.log('[8/8] Prune remove:', record.uuid, 'from', record.bucketId);
+          prunedCount++;
           await deleteRecord(record.uuid);
-  
+
           recordStore.update(r => {
             const updated = { ...r } as any;
             delete updated[record.uuid];
             return updated;
           });
-  
+
           uuidStore.update(u => {
             const list = u[record.bucketId] || [];
             const filtered = list.filter(id => id !== record.uuid);
@@ -220,6 +305,7 @@
           });
         }
       }
+      console.log('[8/8] Prune complete:', { prunedCount, activeWindowSize: activeSet.size });
     };
     setInterval(pruneOldRecords, 5*60*1000); // every 5 minutes
   });
@@ -230,5 +316,6 @@
     {statBucketsExchanged}
     {statUUIDsExchanged}
     {statRecordsExchanged}
+    {peerTraffic}
   />
   
