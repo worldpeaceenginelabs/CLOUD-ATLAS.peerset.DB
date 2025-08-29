@@ -168,8 +168,29 @@ Example:
    Example folder after build:
 
    <img width="1697" height="357" alt="image" src="https://github.com/user-attachments/assets/c2801e46-9082-4389-9adf-fc5a461082e5" />
+<br><br><br>
+
+# Switch Trystero Signaling Strategy
+
+In peerset.DB, by default, the Bittorrent (works out of the box) strategy is used.
 
 ```
+<script type="module">
+  import {joinRoom} from 'trystero/torrent'
+</script>
+```
 
+To use a different strategy, just use a deep import like this ():
 
-
+```
+import {joinRoom} from 'trystero' // Nostr (works out of the box)
+// or
+import {joinRoom} from 'trystero/ipfs' IPFS (works out of the box)
+// or
+import {joinRoom} from 'trystero/mqtt' // MQTT (relay urls needed)
+// or
+import {joinRoom} from 'trystero/supabase' // Supabases (needs config)
+// or
+import {joinRoom} from 'trystero/firebase' // Firebase (needs config)
+```
+Consider https://github.com/dmotz/trystero for more information.
