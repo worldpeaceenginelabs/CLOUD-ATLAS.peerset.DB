@@ -10,7 +10,7 @@ Only you have the Nostr keys in possession but this service offers their recover
 
 ## Features
 
-- Decentralized peer-to-peer network using Trystero: A UUID (hash of the room name) is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our "group-chat" room). Everyone can broadcast, and everyone reads everything.
+- Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)
 - Record creation with UUID, timestamp, creator key, geolocation, text, link, hash, and signature
 - Automatic SHA-256 hashing and secp256k1 signing of records
 - Bucket-based missing-range detection with granularity setting (day/quarterday/...) for efficient syncing of large record sets 
