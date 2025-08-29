@@ -11,14 +11,16 @@ Only you have the Nostr keys in possession but this service offers their recover
 ## Features
 
 - Decentralized peer-to-peer network using Trystero: A UUID (hash of the room name) is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our "group-chat" room). Everyone can broadcast, and everyone reads everything.
-- Handshake + Nonce Challenge authentication for secure peer connections
-- Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more
-- file UI (maybe web UI): Client Status, Swarm Status, Record Status, settings like timeouts, constants, and types. (coming)
-- Strict state machine for peer handshake and session management
-- User login via Bech32 npub/nsec keys (secp256k1)
 - Record creation with UUID, timestamp, creator key, geolocation, text, link, hash, and signature
 - Automatic SHA-256 hashing and secp256k1 signing of records
-- Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection
-- Bucket-based missing-range detection with granularity setting for efficient syncing of large record sets
+- Bucket-based missing-range detection with granularity setting (day/quarterday/...) for efficient syncing of large record sets 
 - Full record deduplication and IndexedDB persistence
 - Broadcast and request missing records automatically among peers
+
+## Coming soon...
+- User login via Bech32 npub/nsec keys (secp256k1) (ready, implementation soon)
+- Handshake + Nonce Challenge authentication for secure peer connections (ready, implementation soon)
+- Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
+- Strict state machine for peer handshake and session management (ready, implementation soon)
+- Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
+- Network UI (maybe web UI): Client Status, Swarm Status, Record Status, settings like timeouts, constants, and types. (coming)
