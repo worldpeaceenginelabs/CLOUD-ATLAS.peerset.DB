@@ -9,6 +9,9 @@
   export let statRecordsExchanged = 0;
   export let peerTraffic: Record<string, { sent: { buckets:number; uuids:number; requests:number; records:number }, recv: { buckets:number; uuids:number; requests:number; records:number } }> = {};
 
+  // 🔹 derive peers online
+  $: peersOnline = Object.keys(peerTraffic || {}).length;
+  
   const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
   let lastGenMs = 0;
@@ -87,6 +90,7 @@
 <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 12px; line-height: 1.4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 16px;">
   <h3 style="margin: 0 0 8px;">Sync stats</h3>
   <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; max-width: 600px;">
+    <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Peers online: <strong>{peersOnline}</strong></div>
     <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Local records: <strong>{Object.keys($recordStore || {}).length}</strong></div>
     <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Received records: <strong>{statReceivedRecords}</strong></div>
     <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Buckets exchanged: <strong>{statBucketsExchanged}</strong></div>
