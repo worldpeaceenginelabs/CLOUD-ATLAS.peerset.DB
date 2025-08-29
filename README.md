@@ -32,6 +32,7 @@ Only you have the Nostr keys in possession but this service offers their recover
 
 6. **Prune old records**  
    - Automatically delete records older than 90 days.
+<br><br><br>
 
 ## Granularity
 
@@ -39,24 +40,24 @@ Only you have the Nostr keys in possession but this service offers their recover
 - Can be adjusted to **quarter-day, hourly, or any custom interval** by modifying:
   - `getBucketForDate()`
   - `TOTAL_BUCKETS`
-- Smaller intervals increase sync granularity but also metadata size and action frequency.
 <br><br><br>
 
-# Features
+# ✅ Features Implemented
 
-- Network Web UI
+- [x] Network Web UI
 <img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/1d76574e-89d7-445c-b90a-2e70ea67ea04" />
+<br><br><br>
 
-- Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)
-- Record creation with UUID, timestamp, creator key, geolocation, text, link, hash, and signature
-- Automatic SHA-256 hashing and secp256k1 signing of records
-- Bucket-based missing-range detection with granularity setting (day/quarterday/...) for efficient syncing of large record sets 
-- Full record deduplication and IndexedDB persistence
-- Broadcast and request missing records automatically among peers
+- [x] Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)  
+- [x] Automatic SHA-256 hashing and secp256k1 signing of records  
+- [x] Bucket-based missing-range detection with granularity setting (day/quarterday/...) for efficient syncing of large record sets  
+- [x] Full record deduplication and IndexedDB persistence  
+- [x] Broadcast and request missing records automatically among peers
+<br><br><br>
 
 ## Coming soon...
-- User login via Bech32 npub/nsec keys (secp256k1) (ready, implementation soon)
-- Handshake + Nonce Challenge authentication for secure peer connections (ready, implementation soon)
-- Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
-- Strict state machine for peer handshake and session management (ready, implementation soon)
-- Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
+- [ ] User login via Bech32 npub/nsec keys (secp256k1) (ready, implementation soon)
+- [ ] Handshake + Nonce Challenge authentication for secure peer connections (ready, implementation soon)
+- [ ] Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
+- [ ] Strict state machine for peer handshake and session management (ready, implementation soon)
+- [ ] Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
