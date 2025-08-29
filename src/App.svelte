@@ -8,6 +8,11 @@
   import { computeBucketHash } from './secp256k1.js';
   import { TOTAL_BUCKETS, getBucketForDate, isBucketActive, getActiveBuckets } from './bucketUtils.js';
   
+   // 🔹 Track active peers in a Set
+   let activePeers = new Set<string>();
+  $: peersOnline = activePeers.size;
+
+
   // --- Trystero config ---
   const config = { appId: 'testpeer' };
   const room = joinRoom(config, 'testroom741369');
@@ -109,6 +114,8 @@
 
     // 1️⃣ Send bucket list on every new peer join (only to that peer)
     room.onPeerJoin(peerId => {
+      activePeers.add(peerId);
+    console.log('Peer joined:', peerId, 'Peers online:', activePeers.size);
       console.log('[1/8] Peer joined. Sending our bucket list.');
       bucketStore.subscribe(localBuckets => {
         sendBucketList(localBuckets, peerId);
@@ -117,6 +124,14 @@
         addPeerCount(peerId, 'sent', 'buckets', Object.keys((localBuckets as any) || {}).length);
       })();
     });
+
+    room.onPeerLeave((peerId) => {
+    activePeers.delete(peerId);
+    console.log('Peer left:', peerId, 'Peers online:', activePeers.size);
+    // optional: clean up traffic stats if you don’t want “ghost” peers in the table
+    delete peerTraffic[peerId];
+    peerTraffic = { ...peerTraffic }; // trigger reactivity
+  });
   
     // 2️⃣ Receive peer's bucket list → reply with our differing hashes
     getBucketList((peerBuckets, peerId) => {
