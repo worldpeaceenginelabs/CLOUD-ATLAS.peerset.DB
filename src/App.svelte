@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { joinRoom, selfId } from 'trystero/torrent';
+  import { joinRoom} from 'trystero/torrent';
   import { bucketStore, uuidStore, recordStore } from './tempstores.js';
   import UI from './UI.svelte';
   import { getAllRecords, saveRecords, deleteRecord } from './db.js';
   import { computeBucketHash } from './secp256k1.js';
-  import { TOTAL_BUCKETS, getBucketForDate, isBucketActive, getActiveBuckets } from './bucketUtils.js';
+  import { getActiveBuckets } from './bucketUtils.js';
   
    // 🔹 Track active peers in a Set
    let activePeers = new Set<string>();
