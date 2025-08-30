@@ -120,14 +120,14 @@
           {#each Object.keys(peerTraffic).sort() as pid}
             <tr>
               <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{pid}</td>
-              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.buckets}</td>
-              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.uuids}</td>
-              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.requests}</td>
-              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.records}</td>
               <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].recv.buckets}</td>
+              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.buckets}</td>
               <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].recv.uuids}</td>
+              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.uuids}</td>
               <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].recv.requests}</td>
+              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.requests}</td>
               <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].recv.records}</td>
+              <td style="padding:8px;border-bottom:1px solid #f2f2f2;">{peerTraffic[pid].sent.records}</td>
             </tr>
           {/each}
         </tbody>
