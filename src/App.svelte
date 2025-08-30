@@ -28,6 +28,13 @@
   const IDLE_TIMEOUT = 5000; // ms
   const lastActivity: Record<string, number> = {};
 
+  // --- UI sync stats ---
+  let statLocalRecords = 0;
+  let statReceivedRecords = 0;
+  let statBucketsExchanged = 0;
+  let statUUIDsExchanged = 0;
+  let statRecordsExchanged = 0;
+
   // --- Per-peer traffic stats ---
   type Traffic = { buckets: number; uuids: number; requests: number; records: number };
   type PeerTraffic = Record<string, { sent: Traffic; recv: Traffic }>;
@@ -113,6 +120,8 @@
       bucketStore.subscribe(localBuckets => {
         sendBucketList(localBuckets, peerId);
         console.log('[1/8] Bucket list sent to peer', peerId);
+        statBucketsExchanged += Object.keys((localBuckets as any) || {}).length;
+        addPeerCount(peerId, 'sent', 'buckets', Object.keys((localBuckets as any) || {}).length);
       })();
     });
 
@@ -139,6 +148,8 @@
         } else {
           console.log('[3/8] No differing hashes to send.');
         }
+        statBucketsExchanged += Object.keys((peerBuckets as any) || {}).length;
+        addPeerCount(peerId, 'recv', 'buckets', Object.keys((peerBuckets as any) || {}).length);
       })();
     });
   
@@ -157,6 +168,8 @@
         } else {
           console.log('[5/8] No UUIDs to send for differing buckets.');
         }
+        statUUIDsExchanged += (Object.values(uuidsToSend) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
+        addPeerCount(peerId, 'recv', 'buckets', Object.keys(differingHashes || {}).length);
       })();
     });
   
@@ -179,6 +192,8 @@
           } else {
             console.log('[7/8] No missing records to request.');
           }
+          statUUIDsExchanged += (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
+          addPeerCount(peerId, 'recv', 'uuids', (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0));
         })();
       })();
     });
@@ -192,6 +207,7 @@
           if (localRecords[id]) payload[id] = localRecords[id];
         }
         if (Object.keys(payload).length > 0) sendRecords(payload, peerId);
+        statRecordsExchanged += Object.keys(payload).length;
         addPeerCount(peerId, 'recv', 'requests', uuids.length || 0);
         addPeerCount(peerId, 'sent', 'records', Object.keys(payload).length);
       })();
@@ -224,6 +240,9 @@
       // Update last activity timestamp for idle detection
       lastActivity[peerId] = Date.now();
 
+      // Update UI counters
+      statReceivedRecords += Object.keys(records || {}).length;
+      addPeerCount(peerId, 'recv', 'records', Object.keys(records || {}).length);
     });
   
     // 7️⃣ Idle peer check → recompute bucket hashes (rolling window) → broadcast if changed
@@ -307,7 +326,11 @@
   });
   </script>
   
-  <UI   
+  <UI
+    {statReceivedRecords}
+    {statBucketsExchanged}
+    {statUUIDsExchanged}
+    {statRecordsExchanged}
     {peerTraffic}
   />
   
