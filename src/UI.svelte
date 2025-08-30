@@ -106,14 +106,14 @@
         <thead>
           <tr style="background:#fafafa; color:#000;">
             <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Peer ID</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: buckets</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: uuids</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: requests</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: records</th>
             <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Recv: buckets</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: buckets</th>
             <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Recv: uuids</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: uuids</th>
             <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Recv: requests</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: requests</th>
             <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Recv: records</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid #eee;">Sent: records</th>
           </tr>
         </thead>
         <tbody>
