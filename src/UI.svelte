@@ -92,10 +92,6 @@
   <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; max-width: 600px;">
     <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Peers online: <strong>{peersOnline}</strong></div>
     <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Local records: <strong>{Object.keys($recordStore || {}).length}</strong></div>
-    <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Received records: <strong>{statReceivedRecords}</strong></div>
-    <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Buckets exchanged: <strong>{statBucketsExchanged}</strong></div>
-    <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">UUIDs exchanged: <strong>{statUUIDsExchanged}</strong></div>
-    <div style="padding:8px;border:1px solid #ddd;border-radius:6px;">Records exchanged: <strong>{statRecordsExchanged}</strong></div>
     <div style="padding:8px;border:1px solid #ddd;border-radius:6px; grid-column: 1 / -1; display:flex; gap:8px; align-items:center;">
       <button on:click={() => generateRecords(10000)} style="padding:8px 12px; border:1px solid #999; border-radius:6px; background:#f7f7f7; cursor:pointer;">Generate 10,000 local records</button>
       <span>Last gen: <strong>{lastGenMs}</strong> ms, <strong>{lastGenKB}</strong> KB</span>
