@@ -4,7 +4,8 @@
 ## 👉 **Think of `peerset.DB` as the simplest way to plug a global, self-synchronizing swarm into your app.**
 <br>
 
-**This is basically science fiction.**  
+### **This is basically science fiction.**  
+
 - Signaling happens **via public BitTorrent trackers**
 - Peers connect **directly via WebRTC**, no servers, no middlemen.   
 - A **peer-to-peer record synchronization system** where every record is:
@@ -15,7 +16,8 @@
   - ✅ Auto-synced across peers
  <br>
  
-This isn’t theory. This is **peerset.DB**.  
+### This isn’t theory. This is **peerset.DB**.  
+
 A fully self-moderated swarm with:  
 - 🔄 Automatic deduplication  
 - 📦 Missing-range detection for large record sets  
@@ -27,20 +29,43 @@ No servers. No central control. No infrastructure except the **public tracker ne
 Anyone on Earth with a browser can join the swarm and instantly share data with everyone else.  
 <br>
 
+### 🌍 **It’s science fiction, but you can use it today.**  
+
 **LIVE DEMO:** Try it yourself — open duplicated windows on your laptop, phone, tablet, or across multiple devices.  
 👉 [cloud-atlas-peerset.pages.dev](https://cloud-atlas-peerset.pages.dev/)  
 It stupidly syncs everything you throw at it.
 <br>
 
-🌍 **It’s science fiction, but you can use it today.**  
 <br><br><br>
 
 ---
 <br><br><br>
 
+# ✅ Features Implemented
+
+- [x] Network Web UI
+<img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/1d76574e-89d7-445c-b90a-2e70ea67ea04" />
+<br><br><br>
+
+- [x] Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)   
+- [x] Bucket-based missing-range detection with granularity setting (day/quarterday/...) for efficient syncing of large record sets  
+- [x] Full record deduplication and IndexedDB persistence  
+- [x] Broadcast and request missing records automatically among peers
+<br><br><br>
+
+## Coming soon...
+- [ ] User login via Bech32 npub/nsec keys (secp256k1) (ready, implementation soon)
+- [ ] Automatic SHA-256 hashing and secp256k1 signing of records and related checks
+- [ ] Handshake + Nonce Challenge authentication for secure peer connections (ready, implementation soon)
+- [ ] Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
+- [ ] Strict state machine for peer handshake and session management (ready, implementation soon)
+- [ ] Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
+<br><br><br>
+
 # ❓ WHAT IS IT
 
-peerset.DB is a new primitive for the decentralized web — think **BitTorrent for live data**, **IPFS without infrastructure**, or **GUN/OrbitDB without servers**.  
+peerset.DB is a new primitive for the decentralized web — think **BitTorrent for live data**, **IPFS without infrastructure**, or **GUN/OrbitDB without servers**.
+
 It’s not just storage. It’s not just messaging. It’s a **fully peer-to-peer database layer** that anyone can drop into their app.  
 
 - **Like BitTorrent**, it uses public trackers for signaling — the unbannable backbone of peer discovery.  
@@ -93,29 +118,8 @@ Only you have the Nostr keys in possession but this service offers their recover
   - `TOTAL_BUCKETS`
 <br><br><br>
 
-# ✅ Features Implemented
 
-- [x] Network Web UI
-<img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/1d76574e-89d7-445c-b90a-2e70ea67ea04" />
-<br><br><br>
-
-- [x] Decentralized peer-to-peer network using Trystero: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)  
-- [x] Automatic SHA-256 hashing and secp256k1 signing of records  
-- [x] Bucket-based missing-range detection with granularity setting (day/quarterday/...) for efficient syncing of large record sets  
-- [x] Full record deduplication and IndexedDB persistence  
-- [x] Broadcast and request missing records automatically among peers
-<br><br><br>
-
-## Coming soon...
-- [ ] User login via Bech32 npub/nsec keys (secp256k1) (ready, implementation soon)
-- [ ] Handshake + Nonce Challenge authentication for secure peer connections (ready, implementation soon)
-- [ ] Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
-- [ ] Strict state machine for peer handshake and session management (ready, implementation soon)
-- [ ] Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
-<br><br><br>
-
-
-## 🚀 Usage for developers
+# 🚀 Usage for developers
 
 
 1. **Rename the file**  
@@ -163,7 +167,8 @@ Example:
 
 2. Get the compiled files from the `dist/` folder.
 
-3. Use them in **any other framework project** (React, Vue, Angular, plain HTML, etc.).
+3. Use them in **any other framework project** (React, Vue, Angular, plain HTML, etc.).<br>
+   **That's the beauty of plain Svelte because we're exporting vanilla JS** 😍
 
    Example folder after build:
 
