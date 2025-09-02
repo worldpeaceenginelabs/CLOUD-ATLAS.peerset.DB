@@ -60,6 +60,7 @@ It stupidly syncs everything you throw at it.
 - [ ] Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
 - [ ] Strict state machine for peer handshake and session management (ready, implementation soon)
 - [ ] Moderation & strike system: bad-word detection, content/link verification, max 5 records per user, duplicate detection, garbage collection (ready, implementation soon)
+- [ ] Phase Rotating Announcements (🖖)
 <br><br><br>
 
 # ❓ WHAT IS IT
