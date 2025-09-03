@@ -16,7 +16,7 @@
   let statRecordsRequested = 0; // Track record IDs exchanged
   let statRecordsExchanged = 0; // Track full records sent
   let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
-
+  
   // --- Trystero setup ---
   const config = { appId: 'testpeer' };
   const room = joinRoom(config, 'testroom_lazyMerkle');
@@ -58,88 +58,45 @@
   private recordIndex = new Map<string, MerkleNode>();
 
   constructor(records: Record<string, any> = {}) {
-     // Filter valid records with a hash property
-    console.log('Records passed to Merkle tree:', records);
     const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
-    console.log('Valid records:', validRecords.length);
-
-    // Insert records in a balanced way
     this.bulkInsert(validRecords);
     this.recomputeHashes(this.root);
   }
 
-  private bulkInsert(records: any[]) {
-    // Sort records by hash to create a balanced tree
-    const sortedRecords = records.length > 0 
-      ? records.sort((a, b) => a.hash.localeCompare(b.hash))
-      : [];
+  getRootHash(): string {
+    return this.root?.hash || '';
+  }
 
-    // Build tree in a balanced manner (e.g., using a sorted array to tree algorithm)
+  private bulkInsert(records: any[]) {
+    const sortedRecords = records.sort((a, b) => a.hash.localeCompare(b.hash));
     this.root = this.buildBalancedTree(sortedRecords, 0, sortedRecords.length - 1);
   }
 
   private buildBalancedTree(records: any[], start: number, end: number): MerkleNode | null {
     if (start > end) return null;
-
-    // Find middle record to make root
-    const mid = Math.floor((start + end) / 2);
-    const record = records[mid];
-    const newNode: MerkleNode = {
-      hash: record.hash,
-      isLeaf: true,
-      recordId: record.uuid,
-      height: 0
-    };
-
-    this.recordIndex.set(record.uuid, newNode);
-
-    // Recursively build left and right subtrees
-    newNode.left = this.buildBalancedTree(records, start, mid - 1);
-    newNode.right = this.buildBalancedTree(records, mid + 1, end);
-
-    // Update height
-    newNode.height = 1 + Math.max(this.getHeight(newNode.left), this.getHeight(newNode.right));
-
-    // Rebalance if needed
-    return this.rebalance(newNode);
-  }
-  
-    getRootHash(): string {
-      return this.root?.hash || '';
-    }
-  
-    // O(log n) insertion
-    insertRecord(record: any, updateHashes = true): void {
-      const newLeaf: MerkleNode = {
+    if (start === end) {
+      // True leaf
+      const record = records[start];
+      const newNode: MerkleNode = {
         hash: record.hash,
-        isLeaf: true,
         recordId: record.uuid,
         height: 0
       };
-  
-      this.recordIndex.set(record.uuid, newLeaf);
-      this.root = this.insertNode(this.root, newLeaf);
-      
-      if (updateHashes) {
-        this.recomputeHashes(this.root);
-      }
+      this.recordIndex.set(record.uuid, newNode);
+      return newNode;
     }
-  
-    // O(log n) deletion  
-    deleteRecord(recordId: string): void {
-      const nodeToDelete = this.recordIndex.get(recordId);
-      if (!nodeToDelete) return;
-  
-      this.recordIndex.delete(recordId);
-      this.root = this.deleteNode(this.root, nodeToDelete.hash);
-      this.recomputeHashes(this.root);
-    }
-  
-    // O(log n) update
-    updateRecord(oldRecord: any, newRecord: any): void {
-      this.deleteRecord(oldRecord.uuid);
-      this.insertRecord(newRecord);
-    }
+
+    // Internal node
+    const mid = Math.floor((start + end) / 2);
+    const newNode: MerkleNode = {
+      hash: '', // Placeholder, updated in recompute
+      height: 0
+    };
+    newNode.left = this.buildBalancedTree(records, start, mid);
+    newNode.right = this.buildBalancedTree(records, mid + 1, end);
+    newNode.height = 1 + Math.max(this.getHeight(newNode.left), this.getHeight(newNode.right));
+    return this.rebalance(newNode); // Keep AVL balancing
+  }
   
     private insertNode(node: MerkleNode | null, newNode: MerkleNode, depth = 0, maxDepth = 1000): MerkleNode {
   if (depth > maxDepth) {
@@ -279,81 +236,61 @@ private getBalance(node: MerkleNode | null): number {
       if (!node) return;
   
       // Recursively update children first
-      if (node.left) this.recomputeHashes(node.left);
-      if (node.right) this.recomputeHashes(node.right);
+      this.recomputeHashes(node.left);
+    this.recomputeHashes(node.right);
   
       // Update this node's hash if it's not a leaf
-      if (!node.isLeaf) {
-        const leftHash = node.left?.hash || '';
-        const rightHash = node.right?.hash || '';
-        node.hash = sha256(leftHash + rightHash);
-      }
-    }
+      if (node.left || node.right) {
+      const leftHash = node.left?.hash || '';
+      const rightHash = node.right?.hash || '';
+      node.hash = sha256(leftHash + rightHash);
+    } // Leaves keep their record.hash
+  }
   
     // Get all subtree hashes for sync protocol
     getAllSubtreeHashes(maxDepth = 3): {path: string, hash: string}[] {
-      const result: {path: string, hash: string}[] = [];
-      this.collectSubtreeHashes(this.root, 'root', maxDepth, result);
-      return result;
+    const result: {path: string, hash: string}[] = [];
+    this.collectSubtreeHashes(this.root, 'root', maxDepth, result);
+    return result;
+  }
+  
+  private collectSubtreeHashes(node: MerkleNode | null, path: string, depth: number, result: {path: string, hash: string}[]) {
+    if (!node || depth <= 0) return;
+    result.push({ path, hash: node.hash });
+    if ((node.left || node.right) && depth > 1) {
+      if (node.left) this.collectSubtreeHashes(node.left, path + 'L', depth - 1, result);
+      if (node.right) this.collectSubtreeHashes(node.right, path + 'R', depth - 1, result);
     }
-  
-    private collectSubtreeHashes(
-      node: MerkleNode | null, 
-      path: string, 
-      depth: number, 
-      result: {path: string, hash: string}[]
-    ): void {
-      if (!node || depth <= 0) return;
-  
-      result.push({ path, hash: node.hash });
-  
-      if (!node.isLeaf && depth > 1) {
-        if (node.left) {
-          this.collectSubtreeHashes(node.left, path + 'L', depth - 1, result);
-        }
-        if (node.right) {
-          this.collectSubtreeHashes(node.right, path + 'R', depth - 1, result);
-        }
-      }
-    }
+  }
   
     // Find records in differing subtrees
     getRecordsForPaths(differingPaths: string[]): string[] {
-      const recordIds: string[] = [];
-      for (const path of differingPaths) {
-        this.collectRecordsInPath(this.root, 'root', path, recordIds);
-      }
-      return recordIds;
+    const recordIds: Set<string> = new Set(); // Avoid dups
+    for (const path of differingPaths) {
+      this.collectRecordsInPath(this.root, 'root', path, recordIds);
     }
+    return Array.from(recordIds);
+  }
   
-    private collectRecordsInPath(
-      node: MerkleNode | null,
-      currentPath: string,
-      targetPath: string,
-      recordIds: string[]
-    ): void {
-      if (!node) return;
+  private collectRecordsInPath(node: MerkleNode | null, currentPath: string, targetPath: string, recordIds: Set<string>) {
+    if (!node) return;
   
       // If we've reached the target path or are within it, collect all leaves
       if (currentPath === targetPath || targetPath.startsWith(currentPath)) {
-        if (node.isLeaf && node.recordId) {
-          recordIds.push(node.recordId);
-          return;
-        }
+      if (node.recordId && !node.left && !node.right) { // True leaf
+        recordIds.add(node.recordId);
+      }
         
         // Continue collecting from all children if we're at/within target path
         if (node.left) this.collectRecordsInPath(node.left, currentPath + 'L', targetPath, recordIds);
-        if (node.right) this.collectRecordsInPath(node.right, currentPath + 'R', targetPath, recordIds);
-      } else if (targetPath.startsWith(currentPath)) {
+      if (node.right) this.collectRecordsInPath(node.right, currentPath + 'R', targetPath, recordIds);
+    } else if (targetPath.startsWith(currentPath)) {
         // We need to go deeper toward the target path
-        if (targetPath[currentPath.length] === 'L' && node.left) {
-          this.collectRecordsInPath(node.left, currentPath + 'L', targetPath, recordIds);
-        }
-        if (targetPath[currentPath.length] === 'R' && node.right) {
-          this.collectRecordsInPath(node.right, currentPath + 'R', targetPath, recordIds);
-        }
-      }
+        const next = targetPath[currentPath.length];
+      if (next === 'L' && node.left) this.collectRecordsInPath(node.left, currentPath + 'L', targetPath, recordIds);
+      if (next === 'R' && node.right) this.collectRecordsInPath(node.right, currentPath + 'R', targetPath, recordIds);
     }
+  }
   
     // Compare with peer's subtree hashes to find differences
     findDifferingPaths(peerSubtrees: {path: string, hash: string}[]): string[] {
@@ -384,22 +321,20 @@ private getBalance(node: MerkleNode | null): number {
     }
   
     private printNode(node: MerkleNode | null, prefix: string, isLast: boolean): void {
-      if (!node) return;
-  
-      console.log(prefix + (isLast ? '└── ' : '├── ') + 
-        (node.isLeaf ? `LEAF(${node.recordId}): ` : 'NODE: ') + 
-        node.hash.substring(0, 8) + '...' +
-        ` [h=${node.height}]`);
-  
-      if (node.left || node.right) {
-        if (node.left) this.printNode(node.left, prefix + (isLast ? '    ' : '│   '), !node.right);
-        if (node.right) this.printNode(node.right, prefix + (isLast ? '    ' : '│   '), true);
-      }
+    if (!node) return;
+    console.log(prefix + (isLast ? '└── ' : '├── ') + 
+      ((node.left || node.right) ? 'NODE: ' : `LEAF(${node.recordId}): `) + 
+      node.hash.substring(0, 8) + '...' +
+      ` [h=${node.height}]`);
+    if (node.left || node.right) {
+      if (node.left) this.printNode(node.left, prefix + (isLast ? '    ' : '│   '), !node.right);
+      if (node.right) this.printNode(node.right, prefix + (isLast ? '    ' : '│   '), true);
     }
+  }
   }
   
   // --- Global tree instance ---
-  let merkleTree: IncrementalMerkleTree | null = null;
+  let merkleTree: IncrementalMerkleTree = new IncrementalMerkleTree({});
   
   // --- Batch helper ---
   function batchRecords(records: Record<string, any>, batchSize = 100): Record<string, any>[] {
@@ -469,55 +404,41 @@ private getBalance(node: MerkleNode | null): number {
   }
 
   private async flush() {
-    if (Object.keys(this.buffer).length === 0) return;
+  if (Object.keys(this.buffer).length === 0) return;
 
-    const toProcess = { ...this.buffer };
-    this.buffer = {};
+  const toProcess = { ...this.buffer };
+  this.buffer = {};
 
-    // Update store
-    recordStore.update(local => ({ ...local, ...toProcess }));
+  // Update store
+  recordStore.update(local => ({ ...local, ...toProcess }));
 
-    // Moderation logic: Filter records before saving to IndexedDB
-    const moderatedRecords: [string, any][] = [];
-    for (const [uuid, record] of Object.entries(toProcess)) {
-      const isApproved = await moderateRecord(record); // Currently returns true
-      if (isApproved) {
-        moderatedRecords.push([uuid, record]);
-      } else {
-        console.log(`Record ${uuid} rejected by moderation`);
-        recordStore.update(local => {
-          const updated = { ...local };
-          delete updated[uuid];
-          return updated;
-        });
-      }
-    }
-
-    // Persist approved records to IndexedDB
-    await Promise.all(
-      moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record))
-    );
-
-    // Ensure merkleTree is initialized
-    if (!merkleTree) {
-      console.log('Initializing Merkle tree for empty peer');
-      merkleTree = new IncrementalMerkleTree({});
-    }
-
-    // Incremental tree updates - O(k log n) where k is number of new records
-    if (merkleTree) {
-      console.log(`Inserting ${moderatedRecords.length} records into Merkle tree`);
-      for (const [, record] of moderatedRecords) {
-        console.debug(`Inserting record ${record.uuid} with hash ${record.hash.substring(0, 8)}...`);
-        merkleTree.insertRecord(record);
-      }
-      const newRootHash = merkleTree.getRootHash();
-      console.log(`New root hash after insert: ${newRootHash ? newRootHash.substring(0, 8) + '...' : 'None'}`);
-      merkleRoot.set(newRootHash);
+  // Moderation logic
+  const moderatedRecords: [string, any][] = [];
+  for (const [uuid, record] of Object.entries(toProcess)) {
+    const isApproved = await moderateRecord(record);
+    if (isApproved) {
+      moderatedRecords.push([uuid, record]);
     } else {
-      console.error('Merkle tree is null, cannot update root hash');
+      console.log(`Record ${uuid} rejected by moderation`);
+      recordStore.update(local => {
+        const updated = { ...local };
+        delete updated[uuid];
+        return updated;
+      });
     }
   }
+
+  // Persist to IndexedDB
+  await Promise.all(moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record)));
+
+  // Rebuild tree with all records
+  const allRecords = get(recordStore);
+  console.log(`Rebuilding Merkle tree with ${Object.keys(allRecords).length} records`);
+  merkleTree = new IncrementalMerkleTree(allRecords);
+  const newRootHash = merkleTree.getRootHash();
+  console.log(`New root hash: ${newRootHash ? newRootHash.substring(0, 8) + '...' : 'None'}`);
+  merkleRoot.set(newRootHash);
+}
 
   forceFlush() {
     if (this.flushTimeout) {
@@ -540,7 +461,7 @@ private getBalance(node: MerkleNode | null): number {
     recordStore.set(persisted);
     
     // Build tree once at startup - O(n log n), but only once!
-    merkleTree = new IncrementalMerkleTree(persisted);
+    merkleTree = new IncrementalMerkleTree(persisted); // Rebuild with persisted records
     merkleRoot.set(merkleTree.getRootHash());
   
     console.log(`Initialized Merkle tree with ${Object.keys(persisted).length} records`);
@@ -559,9 +480,12 @@ private getBalance(node: MerkleNode | null): number {
   
     // 3️⃣ Receive root hash → send subtrees if differ  
     // In App.svelte, within onMount
-getRootHash((peerRootHash, peerId) => {
+    getRootHash((peerRootHash, peerId) => {
   initPeerTraffic(peerId);
-  if (!merkleTree) return;
+  if (!merkleTree || typeof merkleTree.getRootHash !== 'function') {
+    console.warn(`Merkle tree not ready for peer ${peerId}, initializing empty tree`);
+    merkleTree = new IncrementalMerkleTree({});
+  }
 
   peerTraffic[peerId].recv.requests += 1;
   peerTraffic = { ...peerTraffic };
