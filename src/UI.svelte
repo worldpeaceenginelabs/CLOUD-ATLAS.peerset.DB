@@ -37,14 +37,18 @@
 <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 12px; line-height: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;">
   <h3 style="margin: 0 0 8px;">Sync Stats</h3>
   <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; max-width: 600px;">
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Peers online: <strong>{peersOnline}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Local records: <strong>{Object.keys($recordStore || {}).length}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records received: <strong>{statReceivedRecords}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Subtrees exchanged: <strong>{statSubtreesExchanged}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records requested: <strong>{statRecordsRequested}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records sent: <strong>{statRecordsExchanged}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+      Records received: <strong>{statReceivedRecords}</strong>
+    </div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+      Subtrees exchanged: <strong>{statSubtreesExchanged}</strong>
+    </div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+      Records sent: <strong>{statRecordsExchanged}</strong>
+    </div>
+    
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
-      Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'Empty'}</strong>
+      Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'Empty'}</strong> 
     </div>
     
   </div>
@@ -57,28 +61,25 @@
       <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
         <thead>
           <tr style="background: #fafafa; color: #000;">
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Peer ID</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: Buckets</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: Buckets</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: UUIDs</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: UUIDs</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: Requests</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: Requests</th>
+            <th>Peer ID</th>
+            <th>Recv: Subtrees</th>
+            <th>Sent: Subtrees</th>
+            <th>Recv: Records</th>
+            <th>Sent: Records</th>
           </tr>
         </thead>
         <tbody>
           {#each Object.keys(peerTraffic).sort() as pid}
             <tr>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{pid}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.subtrees}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.subtrees}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.records}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.records}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.requests}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.requests}</td>
+              <td>{pid}</td>
+              <td>{peerTraffic[pid].recv.subtrees}</td>
+              <td>{peerTraffic[pid].sent.subtrees}</td>
+              <td>{peerTraffic[pid].recv.records}</td>
+              <td>{peerTraffic[pid].sent.records}</td>
             </tr>
           {/each}
         </tbody>
+        
       </table>
     </div>
   {/if}
