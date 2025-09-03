@@ -233,19 +233,16 @@ private getBalance(node: MerkleNode | null): number {
   
     // Recompute hashes bottom-up after structural changes
     private recomputeHashes(node: MerkleNode | null): void {
-      if (!node) return;
-  
-      // Recursively update children first
-      this.recomputeHashes(node.left);
-    this.recomputeHashes(node.right);
-  
-      // Update this node's hash if it's not a leaf
-      if (node.left || node.right) {
-      const leftHash = node.left?.hash || '';
-      const rightHash = node.right?.hash || '';
-      node.hash = sha256(leftHash + rightHash);
-    } // Leaves keep their record.hash
+  if (!node) return;
+  this.recomputeHashes(node.left);
+  this.recomputeHashes(node.right);
+  if (node.left || node.right) {
+    const leftHash = node.left?.hash || '';
+    const rightHash = node.right?.hash || '';
+    node.hash = sha256(leftHash + rightHash);
+    console.log(`Recomputed hash for node at height ${node.height}: ${node.hash.substring(0, 8)}...`);
   }
+}
   
     // Get all subtree hashes for sync protocol
     getAllSubtreeHashes(maxDepth = 3): {path: string, hash: string}[] {
@@ -367,30 +364,29 @@ private getBalance(node: MerkleNode | null): number {
   
   // --- Prune old records with incremental tree updates ---
   function pruneOldRecords() {
-    const cutoff = Date.now() - RETENTION_DAYS * 24*60*60*1000;
-    let hasChanges = false;
-    const recordsToDelete: string[] = [];
-  
-    recordStore.update(local => {
-      for (const uuid in local) {
-        if (local[uuid].createdAt < cutoff) {
-          recordsToDelete.push(uuid);
-          delete local[uuid];
-          deleteRecord(uuid);
-          hasChanges = true;
-        }
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  let hasChanges = false;
+  recordStore.update(local => {
+    for (const uuid in local) {
+      if (local[uuid].createdAt < cutoff) {
+        delete local[uuid];
+        deleteRecord(uuid);
+        hasChanges = true;
       }
-      return local;
-    });
+    }
+    return local;
+  });
   
     // Incrementally remove records from tree - O(k log n) where k is number deleted
     if (hasChanges && merkleTree) {
-      for (const recordId of recordsToDelete) {
-        merkleTree.deleteRecord(recordId);
-      }
-      merkleRoot.set(merkleTree.getRootHash());
-    }
+    const allRecords = get(recordStore);
+    console.log(`Rebuilding Merkle tree after pruning with ${Object.keys(allRecords).length} records:`, allRecords);
+    merkleTree = new IncrementalMerkleTree(allRecords);
+    const newRootHash = merkleTree.getRootHash();
+    console.log(`New root hash after prune: ${newRootHash || 'Empty'}`);
+    merkleRoot.set(newRootHash);
   }
+}
   
   // --- Improved record buffer with incremental updates ---
   class IncrementalRecordBuffer {
@@ -405,14 +401,10 @@ private getBalance(node: MerkleNode | null): number {
 
   private async flush() {
   if (Object.keys(this.buffer).length === 0) return;
-
   const toProcess = { ...this.buffer };
   this.buffer = {};
-
-  // Update store
+  console.log('Records to process:', toProcess);
   recordStore.update(local => ({ ...local, ...toProcess }));
-
-  // Moderation logic
   const moderatedRecords: [string, any][] = [];
   for (const [uuid, record] of Object.entries(toProcess)) {
     const isApproved = await moderateRecord(record);
@@ -427,16 +419,12 @@ private getBalance(node: MerkleNode | null): number {
       });
     }
   }
-
-  // Persist to IndexedDB
   await Promise.all(moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record)));
-
-  // Rebuild tree with all records
   const allRecords = get(recordStore);
-  console.log(`Rebuilding Merkle tree with ${Object.keys(allRecords).length} records`);
+  console.log(`Rebuilding Merkle tree with ${Object.keys(allRecords).length} records:`, allRecords);
   merkleTree = new IncrementalMerkleTree(allRecords);
   const newRootHash = merkleTree.getRootHash();
-  console.log(`New root hash: ${newRootHash ? newRootHash.substring(0, 8) + '...' : 'None'}`);
+  console.log(`New root hash after flush: ${newRootHash || 'Empty'}`);
   merkleRoot.set(newRootHash);
 }
 
@@ -458,13 +446,13 @@ private getBalance(node: MerkleNode | null): number {
   
     // 1️⃣ Load persisted records and build initial tree
     const persisted = await getAllRecords();
-    recordStore.set(persisted);
-    
-    // Build tree once at startup - O(n log n), but only once!
-    merkleTree = new IncrementalMerkleTree(persisted); // Rebuild with persisted records
-    merkleRoot.set(merkleTree.getRootHash());
-  
-    console.log(`Initialized Merkle tree with ${Object.keys(persisted).length} records`);
+  console.log('Persisted records from IndexedDB:', persisted);
+  recordStore.set(persisted);
+  merkleTree = new IncrementalMerkleTree(persisted);
+  const rootHash = merkleTree.getRootHash();
+  console.log('Initial root hash:', rootHash || 'Empty');
+  merkleRoot.set(rootHash);
+  console.log(`Initialized Merkle tree with ${Object.keys(persisted).length} records, root hash: ${rootHash || 'Empty'}`);
     // Uncomment to see tree structure: merkleTree.printTree();
   
     // 2️⃣ Send root hash on peer join
@@ -517,20 +505,25 @@ private getBalance(node: MerkleNode | null): number {
     // 4️⃣ Receive subtree → find differences and send relevant records
     getSubtree((peerSubtreeData: { path: string, hash: string }[], peerId) => {
   initPeerTraffic(peerId);
-  if (!merkleTree) return;
+  if (!merkleTree) {
+    console.warn(`Merkle tree not initialized for ${peerId}, initializing empty tree`);
+    merkleTree = new IncrementalMerkleTree({});
+  }
 
   peerTraffic[peerId].recv.buckets += peerSubtreeData.length;
   statSubtreesExchanged += peerSubtreeData.length;
   peerTraffic = { ...peerTraffic };
 
-  // If local tree is empty, request all records from peer's subtrees
-  if (!merkleTree.getRootHash() && peerSubtreeData.length > 0) {
-    console.log(`Local tree is empty, requesting all records for ${peerSubtreeData.length} subtrees from ${peerId}`);
-    const recordIds = peerSubtreeData.map(s => s.path); // Treat paths as placeholders to request records
-    const recordsToSend: Record<string, any> = {};
-    // Since we're empty, we can't send records, but we can request them
-    // Here, we rely on the peer to send records for these paths
-    return; // The peer will send records due to findDifferingPaths returning all paths
+  const ourRootHash = merkleTree.getRootHash();
+  if (!ourRootHash && peerSubtreeData.length > 0) {
+    console.log(`Local tree is empty, requesting records for ${peerSubtreeData.length} subtrees from ${peerId}`);
+    // Send our (empty) subtrees to trigger peer to send records
+    const ourSubtrees = merkleTree.getAllSubtreeHashes(3);
+    sendSubtree(ourSubtrees, peerId);
+    peerTraffic[peerId].sent.buckets += ourSubtrees.length;
+    statSubtreesExchanged += ourSubtrees.length;
+    peerTraffic = { ...peerTraffic };
+    return;
   }
 
   const differingPaths = merkleTree.findDifferingPaths(peerSubtreeData);
@@ -540,13 +533,11 @@ private getBalance(node: MerkleNode | null): number {
     const recordIds = merkleTree.getRecordsForPaths(differingPaths);
     const recordsToSend: Record<string, any> = {};
     const snapshot = get(recordStore);
-
     for (const recordId of recordIds) {
       if (snapshot[recordId]) {
         recordsToSend[recordId] = snapshot[recordId];
       }
     }
-
     console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
     sendRecordsBatched(recordsToSend, peerId);
     peerTraffic[peerId].sent.uuids += recordIds.length;
@@ -560,17 +551,26 @@ private getBalance(node: MerkleNode | null): number {
     // 5️⃣ Receive records → buffer for incremental processing
     getRecords(async (records: Record<string, any>, peerId) => {
   initPeerTraffic(peerId);
-  console.log(`Received ${Object.keys(records).length} records from ${peerId}`);
-  peerTraffic[peerId].recv.records += Object.keys(records).length;
-  statReceivedRecords += Object.keys(records).length;
+  console.log(`Received ${Object.keys(records).length} records from ${peerId}:`, records);
+  // Ensure each record has a hash
+  const validatedRecords: Record<string, any> = {};
+  for (const [uuid, record] of Object.entries(records)) {
+    if (!record.hash) {
+      console.warn(`Record ${uuid} missing hash, computing...`);
+      record.hash = sha256(JSON.stringify({ uuid, content: record.content, createdAt: record.createdAt }));
+    }
+    validatedRecords[uuid] = record;
+  }
+  peerTraffic[peerId].recv.records += Object.keys(validatedRecords).length;
+  statReceivedRecords += Object.keys(validatedRecords).length;
   peerTraffic = { ...peerTraffic };
-  recordBuffer.add(records);
+  recordBuffer.add(validatedRecords);
   lastActivity[peerId] = Date.now();
-  // Force flush and broadcast new root hash
   await recordBuffer.forceFlush();
   if (merkleTree) {
-    console.log(`Broadcasting updated root hash to all peers: ${merkleTree.getRootHash().substring(0, 8)}...`);
-    sendRootHash(merkleTree.getRootHash());
+    const rootHash = merkleTree.getRootHash();
+    console.log(`Broadcasting updated root hash to all peers: ${rootHash || 'Empty'}`);
+    sendRootHash(rootHash);
     peerTraffic[peerId].sent.requests += 1;
     peerTraffic = { ...peerTraffic };
   }

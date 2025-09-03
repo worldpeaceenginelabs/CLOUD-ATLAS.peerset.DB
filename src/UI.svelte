@@ -77,7 +77,7 @@
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records requested: <strong>{statRecordsRequested}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records sent: <strong>{statRecordsExchanged}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
-      Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'None'}</strong>
+      Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'Empty'}</strong>
     </div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1; display: flex; gap: 8px; align-items: center;">
       <button on:click={() => generateRecords(10000)} style="padding: 8px 12px; border: 1px solid #999; border-radius: 6px; background: #f7f7f7; cursor: pointer;">Generate 10,000 records</button>
