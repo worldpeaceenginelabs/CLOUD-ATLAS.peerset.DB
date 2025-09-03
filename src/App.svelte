@@ -373,32 +373,71 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
     }
 
     private async flush() {
-      if (Object.keys(this.buffer).length === 0) return;
-      const toProcess = { ...this.buffer };
-      this.buffer = {};
-      console.log(`Processing ${Object.keys(toProcess).length} buffered records`);
+  if (Object.keys(this.buffer).length === 0) return;
+  const toProcess = { ...this.buffer };
+  this.buffer = {};
+  console.log(`Processing ${Object.keys(toProcess).length} buffered records`);
+  
+  recordStore.update(local => ({ ...local, ...toProcess }));
+  const moderatedRecords: [string, any][] = [];
+  
+  for (const [uuid, record] of Object.entries(toProcess)) {
+    const isApproved = await moderateRecord(record);
+    if (isApproved) {
+      // Ensure the record has the UUID field that IndexedDB expects
+      const recordWithUuid = {
+        ...record,
+        uuid: uuid,  // Make sure the UUID is in the record object
+        id: uuid     // Add id field as backup in case db expects 'id' instead of 'uuid'
+      };
       
-      recordStore.update(local => ({ ...local, ...toProcess }));
-      const moderatedRecords: [string, any][] = [];
-      
-      for (const [uuid, record] of Object.entries(toProcess)) {
-        const isApproved = await moderateRecord(record);
-        if (isApproved) {
-          moderatedRecords.push([uuid, record]);
-        } else {
-          console.log(`Record ${uuid} rejected by moderation`);
-          recordStore.update(local => {
-            const updated = { ...local };
-            delete updated[uuid];
-            return updated;
-          });
-        }
-      }
-      
-      await Promise.all(moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record)));
-      const allRecords = get(recordStore);
-      await rebuildMerkleTree(allRecords);
+      console.log(`Record ${uuid} approved, structure:`, Object.keys(recordWithUuid));
+      moderatedRecords.push([uuid, recordWithUuid]);
+    } else {
+      console.log(`Record ${uuid} rejected by moderation`);
+      recordStore.update(local => {
+        const updated = { ...local };
+        delete updated[uuid];
+        return updated;
+      });
     }
+  }
+  
+  // Save records with error handling
+  const savePromises = moderatedRecords.map(async ([uuid, record]) => {
+    try {
+      await saveRecord(uuid, record);
+      console.log(`Successfully saved record ${uuid} to IndexedDB`);
+    } catch (error) {
+      console.error(`Failed to save record ${uuid} to IndexedDB:`, error);
+      console.error(`Record structure:`, record);
+      
+      // Try saving with minimal structure as fallback
+      try {
+        const minimalRecord = {
+          uuid: uuid,
+          id: uuid,
+          ...record
+        };
+        await saveRecord(uuid, minimalRecord);
+        console.log(`Successfully saved record ${uuid} with fallback structure`);
+      } catch (fallbackError) {
+        console.error(`Fallback save also failed for ${uuid}:`, fallbackError);
+        
+        // Remove from recordStore if save fails
+        recordStore.update(local => {
+          const updated = { ...local };
+          delete updated[uuid];
+          return updated;
+        });
+      }
+    }
+  });
+  
+  await Promise.all(savePromises);
+  const allRecords = get(recordStore);
+  await rebuildMerkleTree(allRecords);
+}
 
     async forceFlush() {
       if (this.flushTimeout) {
@@ -508,23 +547,25 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
       console.log(`Found ${differingPaths.length} differing paths with ${peerId}:`, differingPaths);
 
       if (differingPaths.length > 0) {
-        const recordIds = merkleTree?.getRecordsForPaths(differingPaths) || [];
-        const recordsToSend: Record<string, any> = {};
-        const snapshot = get(recordStore);
+  const recordIds = merkleTree?.getRecordsForPaths(differingPaths) || [];
+  const recordsToSend: Record<string, any> = {};
+  const snapshot = get(recordStore);
         
         for (const recordId of recordIds) {
-          if (snapshot[recordId]) {
-            recordsToSend[recordId] = snapshot[recordId];
-          }
-        }
+    if (snapshot[recordId]) {
+      recordsToSend[recordId] = snapshot[recordId];
+    }
+  }
         
         console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
-        sendRecordsBatched(recordsToSend, peerId);
-        peerTraffic[peerId].sent.uuids += recordIds.length;
-        peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
-        statRecordsRequested += recordIds.length;
-        statRecordsExchanged += Object.keys(recordsToSend).length;
-        peerTraffic = { ...peerTraffic };
+  console.log(`Sample record keys being sent:`, Object.keys(Object.values(recordsToSend)[0] || {}));
+  
+  sendRecordsBatched(recordsToSend, peerId);
+  peerTraffic[peerId].sent.uuids += recordIds.length;
+  peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
+  statRecordsRequested += recordIds.length;
+  statRecordsExchanged += Object.keys(recordsToSend).length;
+  peerTraffic = { ...peerTraffic };
       }
     });
   
@@ -593,6 +634,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
 <meta name="mobile-web-app-capable" content="yes">
 
 <div class="p-4">
+  <a href="https://github.com/worldpeaceenginelabs/CLOUD-ATLAS.peerset.DB"><img height="150" width="150" src="github.jpg"></a>
   <Ui
     {statReceivedRecords}
     {statSubtreesExchanged}
