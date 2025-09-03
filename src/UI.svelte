@@ -4,12 +4,12 @@
   import { saveRecord } from './db.js';
   import { sha256 } from './secp256k1.js';
 
-   // --- UI sync stats ---
+  // --- UI sync stats ---
   export let statReceivedRecords = 0;
-  export let statBucketsExchanged = 0;
-  export let statUUIDsExchanged = 0;
+  export let statSubtreesExchanged = 0;
+  export let statRecordsRequested = 0;
   export let statRecordsExchanged = 0;
-  export let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
+  export let peerTraffic: Record<string, { sent: { subtrees: number; records: number; requests: number }, recv: { subtrees: number; records: number; requests: number } }> = {};
 
   // Derive peers online
   $: peersOnline = Object.keys(peerTraffic || {}).length;
@@ -73,11 +73,11 @@
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Peers online: <strong>{peersOnline}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Local records: <strong>{Object.keys($recordStore || {}).length}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records received: <strong>{statReceivedRecords}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Subtrees exchanged: <strong>{statBucketsExchanged}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">UUIDs exchanged: <strong>{statUUIDsExchanged}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Subtrees exchanged: <strong>{statSubtreesExchanged}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records requested: <strong>{statRecordsRequested}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records sent: <strong>{statRecordsExchanged}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
-      Merkle root: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'None'}</strong>
+      Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'None'}</strong>
     </div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1; display: flex; gap: 8px; align-items: center;">
       <button on:click={() => generateRecords(10000)} style="padding: 8px 12px; border: 1px solid #999; border-radius: 6px; background: #f7f7f7; cursor: pointer;">Generate 10,000 records</button>
@@ -96,8 +96,8 @@
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Peer ID</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: subtrees</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: subtrees</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: uuids</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: uuids</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: records</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: records</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: requests</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: requests</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: records</th>
@@ -108,10 +108,10 @@
           {#each Object.keys(peerTraffic).sort() as pid}
             <tr>
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{pid}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.buckets}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.buckets}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.uuids}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.uuids}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.subtrees}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.subtrees}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.records}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.records}</td>
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.requests}</td>
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.requests}</td>
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.records}</td>
@@ -143,7 +143,7 @@
         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f0f0f0; color: #000;">
-              <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">UUID</th>
+              <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Record ID</th>
               <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Created</th>
               <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Creator</th>
               <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Text</th>
