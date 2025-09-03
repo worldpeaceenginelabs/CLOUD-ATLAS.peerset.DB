@@ -2,14 +2,14 @@
   import { v4 as uuidv4 } from 'uuid';
   import { recordStore, merkleRoot } from './stores';
   import { saveRecord } from './db.js';
-  import { sha256 } from './secp256k1.js';
+  import { sha256, bytesToHex } from './secp256k1.js';
 
   // --- UI sync stats ---
   export let statReceivedRecords = 0;
   export let statSubtreesExchanged = 0;
   export let statRecordsRequested = 0;
   export let statRecordsExchanged = 0;
-  export let peerTraffic: Record<string, { sent: { subtrees: number; records: number; requests: number }, recv: { subtrees: number; records: number; requests: number } }> = {};
+  export let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
 
   // Derive peers online
   $: peersOnline = Object.keys(peerTraffic || {}).length;
@@ -26,7 +26,11 @@
 
   // Derive paged records from recordStore
   $: pagedRecords = (() => {
-    const allRecords = Object.values($recordStore || {}).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const allRecords = Object.values($recordStore || {}).sort((a, b) => {
+      const aCreated = a.createdAt || (a.created_at ? new Date(a.created_at).toISOString() : '') || '';
+      const bCreated = b.createdAt || (b.created_at ? new Date(b.created_at).toISOString() : '') || '';
+      return aCreated.localeCompare(bCreated);
+    });
     const start = (currentPage - 1) * pageSize;
     return allRecords.slice(start, start + pageSize);
   })();
@@ -41,6 +45,7 @@
       const record = {
         uuid,
         createdAt: new Date().toISOString(),
+        created_at: Date.now(),
         timestamp: new Date(Date.now() - randomInt(0, 7) * 24 * 60 * 60 * 1000).toISOString(),
         creator_npub: `npub1${Math.random().toString(36).slice(2, 12)}`,
         text: `Mission text ${i}`,
@@ -49,10 +54,18 @@
         longitude: +(Math.random() * 360 - 180).toFixed(5),
         signature: Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('')
       };
+      
       // Compute hash for Merkle tree compatibility
-      record.hash = await sha256(JSON.stringify(record));
+      const recordData = new TextEncoder().encode(JSON.stringify(record));
+      const hashBytes = await sha256(recordData);
+      const hash = bytesToHex(hashBytes);
+      
+      // Add integrity object to match your app's structure
+      record.integrity = { hash };
+      
       records[uuid] = record;
       totalBytes += JSON.stringify(record).length;
+      
       // Save to IndexedDB individually to match your app's saveRecord usage
       await saveRecord(uuid, record);
     }
@@ -94,14 +107,12 @@
         <thead>
           <tr style="background: #fafafa; color: #000;">
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Peer ID</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: subtrees</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: subtrees</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: records</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: records</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: requests</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: requests</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: records</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: records</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: Buckets</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: Buckets</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: UUIDs</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: UUIDs</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: Requests</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: Requests</th>
           </tr>
         </thead>
         <tbody>
@@ -114,8 +125,6 @@
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.records}</td>
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.requests}</td>
               <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.requests}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].recv.records}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #f2f2f2;">{peerTraffic[pid].sent.records}</td>
             </tr>
           {/each}
         </tbody>
@@ -175,7 +184,7 @@
                     <div><strong>Timestamp</strong>: {record.timestamp}</div>
                     <div><strong>Lat</strong>: {record.latitude} · <strong>Lon</strong>: {record.longitude}</div>
                     <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all;">
-                      <div><strong>Hash</strong>: {record.hash}</div>
+                      <div><strong>Hash</strong>: {record.integrity?.hash || record.hash || 'N/A'}</div>
                       <div><strong>Signature</strong>: {record.signature}</div>
                     </div>
                   </td>
