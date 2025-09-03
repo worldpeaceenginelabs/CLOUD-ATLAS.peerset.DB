@@ -9,6 +9,7 @@
   
   // --- Stores ---
   import { recordStore, merkleRoot } from './stores';
+    import RecordGenerator from './RecordGenerator.svelte';
   
   // --- Stats for UI ---
   let statReceivedRecords = 0;
@@ -632,10 +633,16 @@
   });
 </script>
 
-<Ui
+
+<div class="p-4">
+  
+  <Ui
   {statReceivedRecords}
   {statSubtreesExchanged}
   {statRecordsRequested}
   {statRecordsExchanged}
   {peerTraffic}
 />
+<RecordGenerator />
+</div>
+

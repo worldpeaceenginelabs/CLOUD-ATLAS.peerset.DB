@@ -1,4 +1,3 @@
-// records.js
 import { openDB } from 'idb';
 
 // --- IndexedDB helpers ---
