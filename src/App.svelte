@@ -12,8 +12,8 @@
   
   // --- Stats for UI ---
   let statReceivedRecords = 0;
-  let statBucketsExchanged = 0; // Track subtrees as buckets
-  let statUUIDsExchanged = 0; // Track record IDs exchanged
+  let statSubtreesExchanged = 0; // Track subtrees as buckets
+  let statRecordsRequested = 0; // Track record IDs exchanged
   let statRecordsExchanged = 0; // Track full records sent
   let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
 
@@ -564,7 +564,7 @@ getRootHash((peerRootHash, peerId) => {
     console.log(`Sending ${allSubtrees.length} subtree hashes to ${peerId}`);
     sendSubtree(allSubtrees, peerId);
     peerTraffic[peerId].sent.buckets += allSubtrees.length;
-    statBucketsExchanged += allSubtrees.length;
+    statSubtreesExchanged += allSubtrees.length;
     peerTraffic = { ...peerTraffic };
   }
   // Handle empty peer tree (fresh peer)
@@ -586,7 +586,7 @@ getRootHash((peerRootHash, peerId) => {
   if (!merkleTree) return;
 
   peerTraffic[peerId].recv.buckets += peerSubtreeData.length;
-  statBucketsExchanged += peerSubtreeData.length;
+  statSubtreesExchanged += peerSubtreeData.length;
   peerTraffic = { ...peerTraffic };
 
   // If local tree is empty, request all records from peer's subtrees
@@ -617,7 +617,7 @@ getRootHash((peerRootHash, peerId) => {
     sendRecordsBatched(recordsToSend, peerId);
     peerTraffic[peerId].sent.uuids += recordIds.length;
     peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
-    statUUIDsExchanged += recordIds.length;
+    statRecordsRequested += recordIds.length;
     statRecordsExchanged += Object.keys(recordsToSend).length;
     peerTraffic = { ...peerTraffic };
   }
@@ -662,8 +662,8 @@ getRootHash((peerRootHash, peerId) => {
 
 <Ui
 {statReceivedRecords}
-{statBucketsExchanged}
-{statUUIDsExchanged}
+{statSubtreesExchanged}
+{statRecordsRequested}
 {statRecordsExchanged}
 {peerTraffic}
 />
