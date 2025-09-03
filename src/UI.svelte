@@ -1,9 +1,10 @@
 <script lang="ts">
   import { v4 as uuidv4 } from 'uuid';
-  import { recordStore, merkleRoot } from './stores.ts';
+  import { recordStore, merkleRoot } from './stores';
   import { saveRecord } from './db.js';
   import { sha256 } from './secp256k1.js';
 
+   // --- UI sync stats ---
   export let statReceivedRecords = 0;
   export let statBucketsExchanged = 0;
   export let statUUIDsExchanged = 0;
@@ -52,7 +53,6 @@
       record.hash = await sha256(JSON.stringify(record));
       records[uuid] = record;
       totalBytes += JSON.stringify(record).length;
-
       // Save to IndexedDB individually to match your app's saveRecord usage
       await saveRecord(uuid, record);
     }
@@ -72,6 +72,10 @@
   <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; max-width: 600px;">
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Peers online: <strong>{peersOnline}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Local records: <strong>{Object.keys($recordStore || {}).length}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records received: <strong>{statReceivedRecords}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Subtrees exchanged: <strong>{statBucketsExchanged}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">UUIDs exchanged: <strong>{statUUIDsExchanged}</strong></div>
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Records sent: <strong>{statRecordsExchanged}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
       Merkle root: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'None'}</strong>
     </div>
@@ -90,8 +94,8 @@
         <thead>
           <tr style="background: #fafafa; color: #000;">
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Peer ID</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: buckets</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: buckets</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: subtrees</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: subtrees</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: uuids</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Sent: uuids</th>
             <th style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;">Recv: requests</th>

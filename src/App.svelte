@@ -58,20 +58,50 @@
   private recordIndex = new Map<string, MerkleNode>();
 
   constructor(records: Record<string, any> = {}) {
-  // Filter valid records with a hash property  
-  console.log('Records passed to Merkle tree:', records);
-  const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
-  // Sort only if there are valid records
-  console.log('Valid records:', validRecords);
-  const sortedRecords = validRecords.length > 0 
-    ? validRecords.sort((a, b) => a.hash.localeCompare(b.hash))
-    : [];
-  
-  for (const record of sortedRecords) {
-    this.insertRecord(record, false);
+    console.log('Records passed to Merkle tree:', records);
+    const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
+    console.log('Valid records:', validRecords.length);
+
+    // Insert records in a balanced way
+    this.bulkInsert(validRecords);
+    this.recomputeHashes(this.root);
   }
-  this.recomputeHashes(this.root);
-}
+
+  private bulkInsert(records: any[]) {
+    // Sort records by hash to create a balanced tree
+    const sortedRecords = records.length > 0 
+      ? records.sort((a, b) => a.hash.localeCompare(b.hash))
+      : [];
+
+    // Build tree in a balanced manner (e.g., using a sorted array to tree algorithm)
+    this.root = this.buildBalancedTree(sortedRecords, 0, sortedRecords.length - 1);
+  }
+
+  private buildBalancedTree(records: any[], start: number, end: number): MerkleNode | null {
+    if (start > end) return null;
+
+    // Find middle record to make root
+    const mid = Math.floor((start + end) / 2);
+    const record = records[mid];
+    const newNode: MerkleNode = {
+      hash: record.hash,
+      isLeaf: true,
+      recordId: record.uuid,
+      height: 0
+    };
+
+    this.recordIndex.set(record.uuid, newNode);
+
+    // Recursively build left and right subtrees
+    newNode.left = this.buildBalancedTree(records, start, mid - 1);
+    newNode.right = this.buildBalancedTree(records, mid + 1, end);
+
+    // Update height
+    newNode.height = 1 + Math.max(this.getHeight(newNode.left), this.getHeight(newNode.right));
+
+    // Rebalance if needed
+    return this.rebalance(newNode);
+  }
   
     getRootHash(): string {
       return this.root?.hash || '';
@@ -110,29 +140,33 @@
       this.insertRecord(newRecord);
     }
   
-    private insertNode(node: MerkleNode | null, newNode: MerkleNode): MerkleNode {
-  // Base case: if node is null, return the new node
+    private insertNode(node: MerkleNode | null, newNode: MerkleNode, depth = 0, maxDepth = 1000): MerkleNode {
+  if (depth > maxDepth) {
+    throw new Error(`Maximum recursion depth exceeded while inserting node with hash ${newNode.hash.substring(0, 8)}...`);
+  }
+
   if (!node) {
-    newNode.height = 0; // Ensure height is initialized
+    newNode.height = 0;
+    console.debug(`Inserted leaf node with hash ${newNode.hash.substring(0, 8)}...`);
     return newNode;
   }
 
-  // Compare hashes to decide insertion direction
   const comparison = newNode.hash.localeCompare(node.hash);
+  console.debug(`Comparing hashes: ${newNode.hash.substring(0, 8)}... vs ${node.hash.substring(0, 8)}..., result: ${comparison}`);
+
   if (comparison < 0) {
-    node.left = this.insertNode(node.left, newNode);
+    node.left = this.insertNode(node.left, newNode, depth + 1, maxDepth);
   } else if (comparison > 0) {
-    node.right = this.insertNode(node.right, newNode);
+    node.right = this.insertNode(node.right, newNode, depth + 1, maxDepth);
   } else {
-    // Handle equal hashes (e.g., collision or duplicate)
     console.warn(`Duplicate hash detected: ${newNode.hash}. Skipping insertion.`);
-    return node; // Prevent infinite recursion by skipping insertion
+    return node;
   }
 
   // Update height
   node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
 
-  // Rebalance and return
+  // Rebalance
   return this.rebalance(node);
 }
   
@@ -169,15 +203,20 @@
     }
   
     private rebalance(node: MerkleNode): MerkleNode {
+  if (!node) return node; // Early exit for null nodes
+
   const balance = this.getBalance(node);
 
-  console.debug(`Rebalancing node with hash ${node.hash.substring(0, 8)}..., balance: ${balance}`);
+  // Only log if an actual rotation is needed to reduce noise
+  if (balance > 1 || balance < -1) {
+    console.debug(`Rebalancing node with hash ${node.hash.substring(0, 8)}..., balance: ${balance}`);
+  }
 
   // Left heavy
   if (balance > 1) {
-    if (this.getBalance(node.left!) < 0) {
+    if (node.left && this.getBalance(node.left) < 0) {
       console.debug(`Performing left-right rotation on ${node.hash.substring(0, 8)}...`);
-      node.left = this.rotateLeft(node.left!);
+      node.left = this.rotateLeft(node.left);
     }
     console.debug(`Performing right rotation on ${node.hash.substring(0, 8)}...`);
     return this.rotateRight(node);
@@ -185,9 +224,9 @@
 
   // Right heavy
   if (balance < -1) {
-    if (this.getBalance(node.right!) > 0) {
+    if (node.right && this.getBalance(node.right) > 0) {
       console.debug(`Performing right-left rotation on ${node.hash.substring(0, 8)}...`);
-      node.right = this.rotateRight(node.right!);
+      node.right = this.rotateRight(node.right);
     }
     console.debug(`Performing left rotation on ${node.hash.substring(0, 8)}...`);
     return this.rotateLeft(node);
@@ -197,8 +236,9 @@
 }
 
 private rotateLeft(node: MerkleNode): MerkleNode {
+  if (!node.right) throw new Error(`Cannot rotate left: no right child for node ${node.hash.substring(0, 8)}...`);
   console.debug(`Rotating left on ${node.hash.substring(0, 8)}...`);
-  const newRoot = node.right!;
+  const newRoot = node.right;
   node.right = newRoot.left;
   newRoot.left = node;
 
@@ -210,8 +250,9 @@ private rotateLeft(node: MerkleNode): MerkleNode {
 }
 
 private rotateRight(node: MerkleNode): MerkleNode {
+  if (!node.left) throw new Error(`Cannot rotate right: no left child for node ${node.hash.substring(0, 8)}...`);
   console.debug(`Rotating right on ${node.hash.substring(0, 8)}...`);
-  const newRoot = node.left!;
+  const newRoot = node.left;
   node.left = newRoot.right;
   newRoot.right = node;
 
@@ -221,14 +262,14 @@ private rotateRight(node: MerkleNode): MerkleNode {
 
   return newRoot;
 }
-  
-    private getHeight(node: MerkleNode | null): number {
-      return node?.height || -1;
-    }
-  
-    private getBalance(node: MerkleNode | null): number {
-      return node ? this.getHeight(node.left) - this.getHeight(node.right) : 0;
-    }
+
+private getHeight(node: MerkleNode | null): number {
+  return node ? node.height : -1;
+}
+
+private getBalance(node: MerkleNode | null): number {
+  return node ? this.getHeight(node.left) - this.getHeight(node.right) : 0;
+}
   
     // Recompute hashes bottom-up after structural changes
     private recomputeHashes(node: MerkleNode | null): void {
