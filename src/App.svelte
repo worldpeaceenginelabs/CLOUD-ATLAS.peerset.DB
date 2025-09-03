@@ -1,15 +1,22 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { joinRoom } from 'trystero/torrent';
-  import { writable, get } from 'svelte/store';
+  import { get } from 'svelte/store';
   import { getAllRecords, saveRecord, deleteRecord } from './db.js';
   import { sha256 } from './secp256k1.js';
   import { moderateRecord } from './moderation.js';
+  import Ui from './UI.svelte';
   
   // --- Stores ---
-  export const recordStore = writable<Record<string, any>>({});
-  export const merkleRoot = writable(''); // current root hash
+  import { recordStore, merkleRoot } from './stores';
   
+  // --- Stats for UI ---
+  let statReceivedRecords = 0;
+  let statBucketsExchanged = 0; // Track subtrees as buckets
+  let statUUIDsExchanged = 0; // Track record IDs exchanged
+  let statRecordsExchanged = 0; // Track full records sent
+  let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
+
   // --- Trystero setup ---
   const config = { appId: 'testpeer' };
   const room = joinRoom(config, 'testroom_lazyMerkle');
@@ -23,6 +30,18 @@
   const RETENTION_DAYS = 90;
   const lastActivity: Record<string, number> = {};
   
+  // --- Initialize peerTraffic for a peer ---
+  function initPeerTraffic(peerId: string) {
+    if (!peerTraffic[peerId]) {
+      peerTraffic[peerId] = {
+        sent: { buckets: 0, uuids: 0, requests: 0, records: 0 },
+        recv: { buckets: 0, uuids: 0, requests: 0, records: 0 }
+      };
+      // Trigger reactivity
+      peerTraffic = { ...peerTraffic };
+    }
+  }
+
   // --- True incremental Merkle tree structures ---
   type MerkleNode = {
     hash: string;
@@ -39,18 +58,20 @@
   private recordIndex = new Map<string, MerkleNode>();
 
   constructor(records: Record<string, any> = {}) {
-    // Filter valid records with a hash property
-    const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
-    // Sort only if there are valid records
-    const sortedRecords = validRecords.length > 0 
-      ? validRecords.sort((a, b) => a.hash.localeCompare(b.hash))
-      : [];
-    
-    for (const record of sortedRecords) {
-      this.insertRecord(record, false); // Don't recompute hashes until end
-    }
-    this.recomputeHashes(this.root);
+  // Filter valid records with a hash property  
+  console.log('Records passed to Merkle tree:', records);
+  const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
+  // Sort only if there are valid records
+  console.log('Valid records:', validRecords);
+  const sortedRecords = validRecords.length > 0 
+    ? validRecords.sort((a, b) => a.hash.localeCompare(b.hash))
+    : [];
+  
+  for (const record of sortedRecords) {
+    this.insertRecord(record, false);
   }
+  this.recomputeHashes(this.root);
+}
   
     getRootHash(): string {
       return this.root?.hash || '';
@@ -90,21 +111,30 @@
     }
   
     private insertNode(node: MerkleNode | null, newNode: MerkleNode): MerkleNode {
-      // Standard AVL insertion
-      if (!node) return newNode;
-  
-      if (newNode.hash <= node.hash) {
-        node.left = this.insertNode(node.left, newNode);
-      } else {
-        node.right = this.insertNode(node.right, newNode);
-      }
-  
-      // Update height
-      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
-  
-      // Rebalance and return
-      return this.rebalance(node);
-    }
+  // Base case: if node is null, return the new node
+  if (!node) {
+    newNode.height = 0; // Ensure height is initialized
+    return newNode;
+  }
+
+  // Compare hashes to decide insertion direction
+  const comparison = newNode.hash.localeCompare(node.hash);
+  if (comparison < 0) {
+    node.left = this.insertNode(node.left, newNode);
+  } else if (comparison > 0) {
+    node.right = this.insertNode(node.right, newNode);
+  } else {
+    // Handle equal hashes (e.g., collision or duplicate)
+    console.warn(`Duplicate hash detected: ${newNode.hash}. Skipping insertion.`);
+    return node; // Prevent infinite recursion by skipping insertion
+  }
+
+  // Update height
+  node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+
+  // Rebalance and return
+  return this.rebalance(node);
+}
   
     private deleteNode(node: MerkleNode | null, hash: string): MerkleNode | null {
       if (!node) return null;
@@ -139,50 +169,58 @@
     }
   
     private rebalance(node: MerkleNode): MerkleNode {
-      const balance = this.getBalance(node);
-  
-      // Left heavy
-      if (balance > 1) {
-        if (this.getBalance(node.left!) < 0) {
-          node.left = this.rotateLeft(node.left!);
-        }
-        return this.rotateRight(node);
-      }
-  
-      // Right heavy  
-      if (balance < -1) {
-        if (this.getBalance(node.right!) > 0) {
-          node.right = this.rotateRight(node.right!);
-        }
-        return this.rotateLeft(node);
-      }
-  
-      return node;
+  const balance = this.getBalance(node);
+
+  console.debug(`Rebalancing node with hash ${node.hash.substring(0, 8)}..., balance: ${balance}`);
+
+  // Left heavy
+  if (balance > 1) {
+    if (this.getBalance(node.left!) < 0) {
+      console.debug(`Performing left-right rotation on ${node.hash.substring(0, 8)}...`);
+      node.left = this.rotateLeft(node.left!);
     }
-  
-    private rotateLeft(node: MerkleNode): MerkleNode {
-      const newRoot = node.right!;
-      node.right = newRoot.left;
-      newRoot.left = node;
-  
-      // Update heights
-      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
-      newRoot.height = 1 + Math.max(this.getHeight(newRoot.left), this.getHeight(newRoot.right));
-  
-      return newRoot;
+    console.debug(`Performing right rotation on ${node.hash.substring(0, 8)}...`);
+    return this.rotateRight(node);
+  }
+
+  // Right heavy
+  if (balance < -1) {
+    if (this.getBalance(node.right!) > 0) {
+      console.debug(`Performing right-left rotation on ${node.hash.substring(0, 8)}...`);
+      node.right = this.rotateRight(node.right!);
     }
-  
-    private rotateRight(node: MerkleNode): MerkleNode {
-      const newRoot = node.left!;
-      node.left = newRoot.right;
-      newRoot.right = node;
-  
-      // Update heights
-      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
-      newRoot.height = 1 + Math.max(this.getHeight(newRoot.left), this.getHeight(newRoot.right));
-  
-      return newRoot;
-    }
+    console.debug(`Performing left rotation on ${node.hash.substring(0, 8)}...`);
+    return this.rotateLeft(node);
+  }
+
+  return node;
+}
+
+private rotateLeft(node: MerkleNode): MerkleNode {
+  console.debug(`Rotating left on ${node.hash.substring(0, 8)}...`);
+  const newRoot = node.right!;
+  node.right = newRoot.left;
+  newRoot.left = node;
+
+  // Update heights
+  node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+  newRoot.height = 1 + Math.max(this.getHeight(newRoot.left), this.getHeight(newRoot.right));
+
+  return newRoot;
+}
+
+private rotateRight(node: MerkleNode): MerkleNode {
+  console.debug(`Rotating right on ${node.hash.substring(0, 8)}...`);
+  const newRoot = node.left!;
+  node.left = newRoot.right;
+  newRoot.right = node;
+
+  // Update heights
+  node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+  newRoot.height = 1 + Math.max(this.getHeight(newRoot.left), this.getHeight(newRoot.right));
+
+  return newRoot;
+}
   
     private getHeight(node: MerkleNode | null): number {
       return node?.height || -1;
@@ -438,52 +476,76 @@
   
     // 2️⃣ Send root hash on peer join
     room.onPeerJoin(peerId => {
+      initPeerTraffic(peerId);
       if (merkleTree) {
         console.log(`Peer ${peerId} joined, sending root hash: ${merkleTree.getRootHash().substring(0, 8)}...`);
         sendRootHash(merkleTree.getRootHash(), peerId);
+        peerTraffic[peerId].sent.requests += 1;
+        peerTraffic = { ...peerTraffic };
       }
     });
   
     // 3️⃣ Receive root hash → send subtrees if differ  
     getRootHash((peerRootHash, peerId) => {
+      initPeerTraffic(peerId);
       if (!merkleTree) return;
-      
+
+      peerTraffic[peerId].recv.requests += 1;
+      peerTraffic = { ...peerTraffic };
+
       const ourRootHash = merkleTree.getRootHash();
       console.log(`Received root hash from ${peerId}: ${peerRootHash.substring(0, 8)}... vs ours: ${ourRootHash.substring(0, 8)}...`);
-      
+
       if (peerRootHash !== ourRootHash) {
         const allSubtrees = merkleTree.getAllSubtreeHashes(3);
         console.log(`Sending ${allSubtrees.length} subtree hashes to ${peerId}`);
         sendSubtree(allSubtrees, peerId);
+        peerTraffic[peerId].sent.buckets += allSubtrees.length;
+        statBucketsExchanged += allSubtrees.length;
+        peerTraffic = { ...peerTraffic };
       }
     });
   
     // 4️⃣ Receive subtree → find differences and send relevant records
-    getSubtree((peerSubtreeData: {path: string, hash: string}[], peerId) => {
+    getSubtree((peerSubtreeData: { path: string, hash: string }[], peerId) => {
+      initPeerTraffic(peerId);
       if (!merkleTree) return;
-      
+
+      peerTraffic[peerId].recv.buckets += peerSubtreeData.length;
+      statBucketsExchanged += peerSubtreeData.length;
+      peerTraffic = { ...peerTraffic };
+
       const differingPaths = merkleTree.findDifferingPaths(peerSubtreeData);
       console.log(`Found ${differingPaths.length} differing paths with ${peerId}:`, differingPaths);
-      
+
       if (differingPaths.length > 0) {
         const recordIds = merkleTree.getRecordsForPaths(differingPaths);
         const recordsToSend: Record<string, any> = {};
         const snapshot = get(recordStore);
-        
+
         for (const recordId of recordIds) {
           if (snapshot[recordId]) {
             recordsToSend[recordId] = snapshot[recordId];
           }
         }
-        
+
         console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
         sendRecordsBatched(recordsToSend, peerId);
+        peerTraffic[peerId].sent.uuids += recordIds.length;
+        peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
+        statUUIDsExchanged += recordIds.length;
+        statRecordsExchanged += Object.keys(recordsToSend).length;
+        peerTraffic = { ...peerTraffic };
       }
     });
   
     // 5️⃣ Receive records → buffer for incremental processing
     getRecords(async (records: Record<string, any>, peerId) => {
+      initPeerTraffic(peerId);
       console.log(`Received ${Object.keys(records).length} records from ${peerId}`);
+      peerTraffic[peerId].recv.records += Object.keys(records).length;
+      statReceivedRecords += Object.keys(records).length;
+      peerTraffic = { ...peerTraffic };
       recordBuffer.add(records);
       lastActivity[peerId] = Date.now();
     });
@@ -497,6 +559,8 @@
           if (merkleTree) {
             console.log(`Peer ${peerId} went idle, broadcasting root hash`);
             sendRootHash(merkleTree.getRootHash());
+            peerTraffic[peerId].sent.requests += 1;
+            peerTraffic = { ...peerTraffic };
           }
         }
       }
@@ -511,3 +575,11 @@
     };
   });
   </script>
+
+<Ui
+{statReceivedRecords}
+{statBucketsExchanged}
+{statUUIDsExchanged}
+{statRecordsExchanged}
+{peerTraffic}
+/>
