@@ -47,23 +47,22 @@ It stupidly syncs everything you throw at it.
 <img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/1d76574e-89d7-445c-b90a-2e70ea67ea04" />
 <br><br><br>
 
-- [x] Decentralized peer-to-peer network using **[Trystero](https://github.com/dmotz/trystero)**: A hash of the room name is announced on the public BitTorrent tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)   
+- [x] Decentralized peer-to-peer network using **[Trystero](https://github.com/dmotz/trystero)**: A hash of the room name is announced on the public **[BitTorrent](https://www.bittorrent.com/)** tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)   
 - [x] **Merkle Tree** for efficient syncing of large record sets (AVL-based Merkle Tree for O(log n) operations, lazy, balancing)  
-- [x] Full record deduplication and IndexedDB persistence  
-- [x] Broadcast and request missing records automatically among peers
-- [x] Basic Moderation & strike system: bad-word detection and regex on text field (no link in text policy), regex check on link field
-- [x] Garbage Collection: records are pruned if older than 90 days, subscriptions are closed, memory purged (needs improvement)
+- [x] Full record **deduplication** and **IndexedDB** persistence  
+- [x] **Broadcast and request** missing records **automatically** among peers
+- [x] Basic **Moderation & strike system**: **bad-word detection** and **regex** on text field (no link in text policy), regex check on link field
+- [x] **Garbage Collection**: records are pruned if older than 90 days, subscriptions are closed, memory purged (needs improvement)
 <br><br><br>
 
 ## Coming soon...
-- [ ] User "login" via Bech32 npub/nsec keys (secp256k1) (ready, implementation soon)
-- [ ] Automatic SHA-256 hashing and secp256k1 signing of records and related checks
-- [ ] Handshake + Nonce Challenge authentication for secure peer connections (ready, implementation soon)
-- [ ] Session enforcement: handshake timeout, challenge timeout, max peer & client session times and many more (ready, implementation soon)
-- [ ] Strict state machine for peer handshake and session management (ready, implementation soon)
-- [ ] more Moderation filters: max 5 records in indexeddb per author.npub, duplicate detection, (ready, implementation soon)
-
-- [ ] Phase Rotating Announcements (🖖)
+- [ ] User "login" via **Bech32 npub/nsec keys** (secp256k1) (ready code, implementation soon)
+- [ ] Automatic **SHA-256 hashing** and **secp256k1 signing** of records and related checks (ready snippet, implementation soon)
+- [ ] **Handshake + Nonce Challenge** authentication for secure peer connections (ready code, implementation soon)
+- [ ] **Session enforcement**: handshake timeout, challenge timeout, max peer & client session times and many more (ready code, implementation soon)
+- [ ] **Strict state machine** for peer handshake and session management (ready code, implementation soon)
+- [ ] **more Moderation filters**: max 5 records in indexeddb per author.npub, duplicate detection, (ready snippets, implementation soon)
+- [ ] **Phase Rotating Announcements** (🖖)
 <br><br><br>
 
 # ❓ WHAT IS IT
