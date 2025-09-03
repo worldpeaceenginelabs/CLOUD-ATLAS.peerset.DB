@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { v4 as uuidv4 } from 'uuid';
   import { recordStore, merkleRoot } from './stores';
-  import { saveRecord } from './db.js';
-  import { sha256, bytesToHex } from './secp256k1.js';
 
   // --- UI sync stats ---
   export let statReceivedRecords = 0;
@@ -35,49 +32,6 @@
     return allRecords.slice(start, start + pageSize);
   })();
 
-  async function generateRecords(count = 10000) {
-    const t0 = performance.now();
-    const records: Record<string, any> = {};
-    let totalBytes = 0;
-
-    for (let i = 0; i < count; i++) {
-      const uuid = uuidv4();
-      const record = {
-        uuid,
-        createdAt: new Date().toISOString(),
-        created_at: Date.now(),
-        timestamp: new Date(Date.now() - randomInt(0, 7) * 24 * 60 * 60 * 1000).toISOString(),
-        creator_npub: `npub1${Math.random().toString(36).slice(2, 12)}`,
-        text: `Mission text ${i}`,
-        link: `https://example.com/${i}`,
-        latitude: +(Math.random() * 180 - 90).toFixed(5),
-        longitude: +(Math.random() * 360 - 180).toFixed(5),
-        signature: Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('')
-      };
-      
-      // Compute hash for Merkle tree compatibility
-      const recordData = new TextEncoder().encode(JSON.stringify(record));
-      const hashBytes = await sha256(recordData);
-      const hash = bytesToHex(hashBytes);
-      
-      // Add integrity object to match your app's structure
-      record.integrity = { hash };
-      
-      records[uuid] = record;
-      totalBytes += JSON.stringify(record).length;
-      
-      // Save to IndexedDB individually to match your app's saveRecord usage
-      await saveRecord(uuid, record);
-    }
-
-    // Update recordStore
-    recordStore.update(local => ({ ...local, ...records }));
-
-    const t1 = performance.now();
-    lastGenMs = Math.round(t1 - t0);
-    lastGenKB = Math.round(totalBytes / 1024);
-    console.log(`Generated ${count} records in ${lastGenMs} ms, ~${lastGenKB} KB`);
-  }
 </script>
 
 <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 12px; line-height: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;">
@@ -92,10 +46,7 @@
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
       Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'Empty'}</strong>
     </div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1; display: flex; gap: 8px; align-items: center;">
-      <button on:click={() => generateRecords(10000)} style="padding: 8px 12px; border: 1px solid #999; border-radius: 6px; background: #f7f7f7; cursor: pointer;">Generate 10,000 records</button>
-      <span>Last gen: <strong>{lastGenMs}</strong> ms, <strong>{lastGenKB}</strong> KB</span>
-    </div>
+    
   </div>
 
   <h3 style="margin: 16px 0 8px;">Per-peer Traffic</h3>
