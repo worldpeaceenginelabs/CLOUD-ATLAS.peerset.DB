@@ -459,63 +459,73 @@ private getBalance(node: MerkleNode | null): number {
   
   // --- Improved record buffer with incremental updates ---
   class IncrementalRecordBuffer {
-    private buffer: Record<string, any> = {};
-    private flushTimeout: number | null = null;
-    
-    add(records: Record<string, any>) {
-      Object.assign(this.buffer, records);
-      
-      if (this.flushTimeout) clearTimeout(this.flushTimeout);
-      this.flushTimeout = setTimeout(() => this.flush(), 100);
-    }
-    
-    private async flush() {
-  if (Object.keys(this.buffer).length === 0) return;
+  private buffer: Record<string, any> = {};
+  private flushTimeout: number | null = null;
 
-  const toProcess = { ...this.buffer };
-  this.buffer = {};
-
-  // Update store
-  recordStore.update(local => ({ ...local, ...toProcess }));
-
-  // Moderation logic: Filter records before saving to IndexedDB
-  const moderatedRecords: [string, any][] = [];
-  for (const [uuid, record] of Object.entries(toProcess)) {
-    const isApproved = await moderateRecord(record); // Your moderation function
-    if (isApproved) {
-      moderatedRecords.push([uuid, record]);
-    } else {
-      console.log(`Record ${uuid} rejected by moderation`);
-      // Optionally remove from recordStore if rejected
-      recordStore.update(local => {
-        const updated = { ...local };
-        delete updated[uuid];
-        return updated;
-      });
-    }
+  add(records: Record<string, any>) {
+    Object.assign(this.buffer, records);
+    if (this.flushTimeout) clearTimeout(this.flushTimeout);
+    this.flushTimeout = setTimeout(() => this.flush(), 100);
   }
 
-  // Persist approved records to IndexedDB
-  await Promise.all(
-    moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record))
-  );
+  private async flush() {
+    if (Object.keys(this.buffer).length === 0) return;
 
-  // Incremental tree updates - O(k log n) where k is number of new records
-  if (merkleTree) {
-    for (const [, record] of moderatedRecords) {
-      merkleTree.insertRecord(record);
-    }
-    merkleRoot.set(merkleTree.getRootHash());
-  }
-}
-    
-    forceFlush() {
-      if (this.flushTimeout) {
-        clearTimeout(this.flushTimeout);
-        this.flush();
+    const toProcess = { ...this.buffer };
+    this.buffer = {};
+
+    // Update store
+    recordStore.update(local => ({ ...local, ...toProcess }));
+
+    // Moderation logic: Filter records before saving to IndexedDB
+    const moderatedRecords: [string, any][] = [];
+    for (const [uuid, record] of Object.entries(toProcess)) {
+      const isApproved = await moderateRecord(record); // Currently returns true
+      if (isApproved) {
+        moderatedRecords.push([uuid, record]);
+      } else {
+        console.log(`Record ${uuid} rejected by moderation`);
+        recordStore.update(local => {
+          const updated = { ...local };
+          delete updated[uuid];
+          return updated;
+        });
       }
     }
+
+    // Persist approved records to IndexedDB
+    await Promise.all(
+      moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record))
+    );
+
+    // Ensure merkleTree is initialized
+    if (!merkleTree) {
+      console.log('Initializing Merkle tree for empty peer');
+      merkleTree = new IncrementalMerkleTree({});
+    }
+
+    // Incremental tree updates - O(k log n) where k is number of new records
+    if (merkleTree) {
+      console.log(`Inserting ${moderatedRecords.length} records into Merkle tree`);
+      for (const [, record] of moderatedRecords) {
+        console.debug(`Inserting record ${record.uuid} with hash ${record.hash.substring(0, 8)}...`);
+        merkleTree.insertRecord(record);
+      }
+      const newRootHash = merkleTree.getRootHash();
+      console.log(`New root hash after insert: ${newRootHash ? newRootHash.substring(0, 8) + '...' : 'None'}`);
+      merkleRoot.set(newRootHash);
+    } else {
+      console.error('Merkle tree is null, cannot update root hash');
+    }
   }
+
+  forceFlush() {
+    if (this.flushTimeout) {
+      clearTimeout(this.flushTimeout);
+      this.flush();
+    }
+  }
+}
   
   const recordBuffer = new IncrementalRecordBuffer();
   
@@ -625,14 +635,22 @@ getRootHash((peerRootHash, peerId) => {
   
     // 5️⃣ Receive records → buffer for incremental processing
     getRecords(async (records: Record<string, any>, peerId) => {
-      initPeerTraffic(peerId);
-      console.log(`Received ${Object.keys(records).length} records from ${peerId}`);
-      peerTraffic[peerId].recv.records += Object.keys(records).length;
-      statReceivedRecords += Object.keys(records).length;
-      peerTraffic = { ...peerTraffic };
-      recordBuffer.add(records);
-      lastActivity[peerId] = Date.now();
-    });
+  initPeerTraffic(peerId);
+  console.log(`Received ${Object.keys(records).length} records from ${peerId}`);
+  peerTraffic[peerId].recv.records += Object.keys(records).length;
+  statReceivedRecords += Object.keys(records).length;
+  peerTraffic = { ...peerTraffic };
+  recordBuffer.add(records);
+  lastActivity[peerId] = Date.now();
+  // Force flush and broadcast new root hash
+  await recordBuffer.forceFlush();
+  if (merkleTree) {
+    console.log(`Broadcasting updated root hash to all peers: ${merkleTree.getRootHash().substring(0, 8)}...`);
+    sendRootHash(merkleTree.getRootHash());
+    peerTraffic[peerId].sent.requests += 1;
+    peerTraffic = { ...peerTraffic };
+  }
+});
   
     // 6️⃣ Idle check → broadcast updated root
     setInterval(() => {
