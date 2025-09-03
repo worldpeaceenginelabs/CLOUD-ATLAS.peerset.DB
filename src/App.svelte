@@ -1,336 +1,513 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { get } from 'svelte/store';
-  import { joinRoom} from 'trystero/torrent';
-  import { bucketStore, uuidStore, recordStore } from './tempstores.js';
-  import UI from './UI.svelte';
-  import { getAllRecords, saveRecords, deleteRecord } from './db.js';
-  import { computeBucketHash } from './secp256k1.js';
-  import { getActiveBuckets } from './bucketUtils.js';
+  import { joinRoom } from 'trystero/torrent';
+  import { writable, get } from 'svelte/store';
+  import { getAllRecords, saveRecord, deleteRecord } from './db.js';
+  import { sha256 } from './secp256k1.js';
+  import { moderateRecord } from './moderation.js';
   
-   // 🔹 Track active peers in a Set
-   let activePeers = new Set<string>();
-  $: peersOnline = activePeers.size;
-
-
-  // --- Trystero config ---
+  // --- Stores ---
+  export const recordStore = writable<Record<string, any>>({});
+  export const merkleRoot = writable(''); // current root hash
+  
+  // --- Trystero setup ---
   const config = { appId: 'testpeer' };
-  const room = joinRoom(config, 'testroom741369');
+  const room = joinRoom(config, 'testroom_lazyMerkle');
   
-  // --- Actions ---
-  let sendBucketList, getBucketList;
-  let sendBucketDiff, getBucketDiff;
-  let sendUUIDs, getUUIDs;
-  let sendRequestRecords, getRequestRecords;
+  let sendRootHash, getRootHash;
+  let sendSubtree, getSubtree;
   let sendRecords, getRecords;
   
-  // --- Idle detection for bucket refresh ---
-  const IDLE_TIMEOUT = 5000; // ms
+  const IDLE_TIMEOUT = 5000;
+  const PRUNE_INTERVAL = 5 * 60 * 1000; // 5 min
+  const RETENTION_DAYS = 90;
   const lastActivity: Record<string, number> = {};
+  
+  // --- True incremental Merkle tree structures ---
+  type MerkleNode = {
+    hash: string;
+    left?: MerkleNode;
+    right?: MerkleNode;
+    isLeaf?: boolean;
+    recordId?: string;
+    height: number;
+  };
+  
+  // --- AVL-based Merkle Tree for O(log n) operations ---
+  class IncrementalMerkleTree {
+  private root: MerkleNode | null = null;
+  private recordIndex = new Map<string, MerkleNode>();
 
-  // --- UI sync stats ---
-  let statLocalRecords = 0;
-  let statReceivedRecords = 0;
-  let statBucketsExchanged = 0;
-  let statUUIDsExchanged = 0;
-  let statRecordsExchanged = 0;
-
-  // --- Per-peer traffic stats ---
-  type Traffic = { buckets: number; uuids: number; requests: number; records: number };
-  type PeerTraffic = Record<string, { sent: Traffic; recv: Traffic }>;
-  let peerTraffic: PeerTraffic = {};
-
-  function ensurePeer(peerId: string) {
-    if (!peerTraffic[peerId]) {
-      peerTraffic[peerId] = {
-        sent: { buckets: 0, uuids: 0, requests: 0, records: 0 },
-        recv: { buckets: 0, uuids: 0, requests: 0, records: 0 }
+  constructor(records: Record<string, any> = {}) {
+    // Filter valid records with a hash property
+    const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
+    // Sort only if there are valid records
+    const sortedRecords = validRecords.length > 0 
+      ? validRecords.sort((a, b) => a.hash.localeCompare(b.hash))
+      : [];
+    
+    for (const record of sortedRecords) {
+      this.insertRecord(record, false); // Don't recompute hashes until end
+    }
+    this.recomputeHashes(this.root);
+  }
+  
+    getRootHash(): string {
+      return this.root?.hash || '';
+    }
+  
+    // O(log n) insertion
+    insertRecord(record: any, updateHashes = true): void {
+      const newLeaf: MerkleNode = {
+        hash: record.hash,
+        isLeaf: true,
+        recordId: record.uuid,
+        height: 0
       };
+  
+      this.recordIndex.set(record.uuid, newLeaf);
+      this.root = this.insertNode(this.root, newLeaf);
+      
+      if (updateHashes) {
+        this.recomputeHashes(this.root);
+      }
+    }
+  
+    // O(log n) deletion  
+    deleteRecord(recordId: string): void {
+      const nodeToDelete = this.recordIndex.get(recordId);
+      if (!nodeToDelete) return;
+  
+      this.recordIndex.delete(recordId);
+      this.root = this.deleteNode(this.root, nodeToDelete.hash);
+      this.recomputeHashes(this.root);
+    }
+  
+    // O(log n) update
+    updateRecord(oldRecord: any, newRecord: any): void {
+      this.deleteRecord(oldRecord.uuid);
+      this.insertRecord(newRecord);
+    }
+  
+    private insertNode(node: MerkleNode | null, newNode: MerkleNode): MerkleNode {
+      // Standard AVL insertion
+      if (!node) return newNode;
+  
+      if (newNode.hash <= node.hash) {
+        node.left = this.insertNode(node.left, newNode);
+      } else {
+        node.right = this.insertNode(node.right, newNode);
+      }
+  
+      // Update height
+      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+  
+      // Rebalance and return
+      return this.rebalance(node);
+    }
+  
+    private deleteNode(node: MerkleNode | null, hash: string): MerkleNode | null {
+      if (!node) return null;
+  
+      if (hash < node.hash) {
+        node.left = this.deleteNode(node.left, hash);
+      } else if (hash > node.hash) {
+        node.right = this.deleteNode(node.right, hash);
+      } else {
+        // Node to delete found
+        if (!node.left) return node.right;
+        if (!node.right) return node.left;
+  
+        // Node with two children: find inorder successor
+        const successor = this.findMin(node.right);
+        node.hash = successor.hash;
+        node.recordId = successor.recordId;
+        node.isLeaf = successor.isLeaf;
+        node.right = this.deleteNode(node.right, successor.hash);
+      }
+  
+      // Update height and rebalance
+      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+      return this.rebalance(node);
+    }
+  
+    private findMin(node: MerkleNode): MerkleNode {
+      while (node.left) {
+        node = node.left;
+      }
+      return node;
+    }
+  
+    private rebalance(node: MerkleNode): MerkleNode {
+      const balance = this.getBalance(node);
+  
+      // Left heavy
+      if (balance > 1) {
+        if (this.getBalance(node.left!) < 0) {
+          node.left = this.rotateLeft(node.left!);
+        }
+        return this.rotateRight(node);
+      }
+  
+      // Right heavy  
+      if (balance < -1) {
+        if (this.getBalance(node.right!) > 0) {
+          node.right = this.rotateRight(node.right!);
+        }
+        return this.rotateLeft(node);
+      }
+  
+      return node;
+    }
+  
+    private rotateLeft(node: MerkleNode): MerkleNode {
+      const newRoot = node.right!;
+      node.right = newRoot.left;
+      newRoot.left = node;
+  
+      // Update heights
+      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+      newRoot.height = 1 + Math.max(this.getHeight(newRoot.left), this.getHeight(newRoot.right));
+  
+      return newRoot;
+    }
+  
+    private rotateRight(node: MerkleNode): MerkleNode {
+      const newRoot = node.left!;
+      node.left = newRoot.right;
+      newRoot.right = node;
+  
+      // Update heights
+      node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+      newRoot.height = 1 + Math.max(this.getHeight(newRoot.left), this.getHeight(newRoot.right));
+  
+      return newRoot;
+    }
+  
+    private getHeight(node: MerkleNode | null): number {
+      return node?.height || -1;
+    }
+  
+    private getBalance(node: MerkleNode | null): number {
+      return node ? this.getHeight(node.left) - this.getHeight(node.right) : 0;
+    }
+  
+    // Recompute hashes bottom-up after structural changes
+    private recomputeHashes(node: MerkleNode | null): void {
+      if (!node) return;
+  
+      // Recursively update children first
+      if (node.left) this.recomputeHashes(node.left);
+      if (node.right) this.recomputeHashes(node.right);
+  
+      // Update this node's hash if it's not a leaf
+      if (!node.isLeaf) {
+        const leftHash = node.left?.hash || '';
+        const rightHash = node.right?.hash || '';
+        node.hash = sha256(leftHash + rightHash);
+      }
+    }
+  
+    // Get all subtree hashes for sync protocol
+    getAllSubtreeHashes(maxDepth = 3): {path: string, hash: string}[] {
+      const result: {path: string, hash: string}[] = [];
+      this.collectSubtreeHashes(this.root, 'root', maxDepth, result);
+      return result;
+    }
+  
+    private collectSubtreeHashes(
+      node: MerkleNode | null, 
+      path: string, 
+      depth: number, 
+      result: {path: string, hash: string}[]
+    ): void {
+      if (!node || depth <= 0) return;
+  
+      result.push({ path, hash: node.hash });
+  
+      if (!node.isLeaf && depth > 1) {
+        if (node.left) {
+          this.collectSubtreeHashes(node.left, path + 'L', depth - 1, result);
+        }
+        if (node.right) {
+          this.collectSubtreeHashes(node.right, path + 'R', depth - 1, result);
+        }
+      }
+    }
+  
+    // Find records in differing subtrees
+    getRecordsForPaths(differingPaths: string[]): string[] {
+      const recordIds: string[] = [];
+      for (const path of differingPaths) {
+        this.collectRecordsInPath(this.root, 'root', path, recordIds);
+      }
+      return recordIds;
+    }
+  
+    private collectRecordsInPath(
+      node: MerkleNode | null,
+      currentPath: string,
+      targetPath: string,
+      recordIds: string[]
+    ): void {
+      if (!node) return;
+  
+      // If we've reached the target path or are within it, collect all leaves
+      if (currentPath === targetPath || targetPath.startsWith(currentPath)) {
+        if (node.isLeaf && node.recordId) {
+          recordIds.push(node.recordId);
+          return;
+        }
+        
+        // Continue collecting from all children if we're at/within target path
+        if (node.left) this.collectRecordsInPath(node.left, currentPath + 'L', targetPath, recordIds);
+        if (node.right) this.collectRecordsInPath(node.right, currentPath + 'R', targetPath, recordIds);
+      } else if (targetPath.startsWith(currentPath)) {
+        // We need to go deeper toward the target path
+        if (targetPath[currentPath.length] === 'L' && node.left) {
+          this.collectRecordsInPath(node.left, currentPath + 'L', targetPath, recordIds);
+        }
+        if (targetPath[currentPath.length] === 'R' && node.right) {
+          this.collectRecordsInPath(node.right, currentPath + 'R', targetPath, recordIds);
+        }
+      }
+    }
+  
+    // Compare with peer's subtree hashes to find differences
+    findDifferingPaths(peerSubtrees: {path: string, hash: string}[]): string[] {
+      const peerHashMap = new Map(peerSubtrees.map(s => [s.path, s.hash]));
+      const ourSubtrees = this.getAllSubtreeHashes(3);
+      const differingPaths: string[] = [];
+  
+      for (const {path, hash} of ourSubtrees) {
+        const peerHash = peerHashMap.get(path);
+        if (!peerHash || peerHash !== hash) {
+          differingPaths.push(path);
+        }
+      }
+  
+      return differingPaths;
+    }
+  
+    // Debug: Print tree structure
+    printTree(): void {
+      console.log('Merkle Tree Structure:');
+      this.printNode(this.root, '', true);
+    }
+  
+    private printNode(node: MerkleNode | null, prefix: string, isLast: boolean): void {
+      if (!node) return;
+  
+      console.log(prefix + (isLast ? '└── ' : '├── ') + 
+        (node.isLeaf ? `LEAF(${node.recordId}): ` : 'NODE: ') + 
+        node.hash.substring(0, 8) + '...' +
+        ` [h=${node.height}]`);
+  
+      if (node.left || node.right) {
+        if (node.left) this.printNode(node.left, prefix + (isLast ? '    ' : '│   '), !node.right);
+        if (node.right) this.printNode(node.right, prefix + (isLast ? '    ' : '│   '), true);
+      }
     }
   }
-  function addPeerCount(peerId: string, dir: 'sent'|'recv', field: keyof Traffic, delta: number) {
-    ensurePeer(peerId);
-    // Replace object to keep Svelte reactive
-    peerTraffic = {
-      ...peerTraffic,
-      [peerId]: {
-        ...peerTraffic[peerId],
-        [dir]: {
-          ...peerTraffic[peerId][dir],
-          [field]: peerTraffic[peerId][dir][field] + delta
-        }
-      }
-    };
+  
+  // --- Global tree instance ---
+  let merkleTree: IncrementalMerkleTree | null = null;
+  
+  // --- Batch helper ---
+  function batchRecords(records: Record<string, any>, batchSize = 100): Record<string, any>[] {
+    const keys = Object.keys(records);
+    const batches: Record<string, any>[] = [];
+    for (let i = 0; i < keys.length; i += batchSize) {
+      const batch: Record<string, any> = {};
+      keys.slice(i, i + batchSize).forEach(k => batch[k] = records[k]);
+      batches.push(batch);
+    }
+    return batches;
   }
   
-  // --- On mount, setup Trystero and sync workflow ---
-  onMount(() => {
-    // 0️⃣ Initialize Trystero actions
-    [sendBucketList, getBucketList] = room.makeAction('bucketList');
-    [sendBucketDiff, getBucketDiff] = room.makeAction('bucketDiff');
-    [sendUUIDs, getUUIDs] = room.makeAction('bucketUUIDs');
-    [sendRequestRecords, getRequestRecords] = room.makeAction('reqRecs');
-    [sendRecords, getRecords] = room.makeAction('sendRecords');
+  function sendRecordsBatched(records: Record<string, any>, peerId?: string) {
+    const batches = batchRecords(records, 100);
+    for (const batch of batches) sendRecords(batch, peerId);
+  }
   
-    // Initial bucket hash computation and broadcast
-    const recomputeAndBroadcast = async () => {
-      const recordsMap = get(recordStore) as Record<string, any>;
-      const allRecords = Object.values(recordsMap) as any[];
-      const bucketMap: Record<string, string[]> = {};
-      allRecords.forEach((r: any) => {
-        if (!bucketMap[r.bucketId]) bucketMap[r.bucketId] = [];
-        bucketMap[r.bucketId].push(r.uuid);
-      });
-      const newBucketHashes: Record<string, string> = {};
-      const active = getActiveBuckets();
-      for (const bucketId of active) {
-        newBucketHashes[bucketId] = await computeBucketHash(
-          bucketMap[bucketId] || [],
-          Object.fromEntries(allRecords.map((r: any) => [r.uuid, r]))
-        );
+  // --- Prune old records with incremental tree updates ---
+  function pruneOldRecords() {
+    const cutoff = Date.now() - RETENTION_DAYS * 24*60*60*1000;
+    let hasChanges = false;
+    const recordsToDelete: string[] = [];
+  
+    recordStore.update(local => {
+      for (const uuid in local) {
+        if (local[uuid].createdAt < cutoff) {
+          recordsToDelete.push(uuid);
+          delete local[uuid];
+          deleteRecord(uuid);
+          hasChanges = true;
+        }
       }
-      const current = get(bucketStore) as Record<string, string>;
-      let changed = false;
-      if (Object.keys(current).length !== Object.keys(newBucketHashes).length) changed = true;
-      if (!changed) {
-        for (const k in newBucketHashes) { if (newBucketHashes[k] !== current[k]) { changed = true; break; } }
-      }
-      if (changed) {
-        bucketStore.set(newBucketHashes as any);
-        sendBucketList(newBucketHashes);
-        console.log('[init] Computed and broadcasted bucket hashes.');
-      }
-    };
-
-    // Run once on mount
-    recomputeAndBroadcast();
-
-    // Debounced recompute when records change
-    let recomputeTimer: any;
-    recordStore.subscribe(() => {
-      clearTimeout(recomputeTimer);
-      recomputeTimer = setTimeout(recomputeAndBroadcast, 250);
+      return local;
     });
+  
+    // Incrementally remove records from tree - O(k log n) where k is number deleted
+    if (hasChanges && merkleTree) {
+      for (const recordId of recordsToDelete) {
+        merkleTree.deleteRecord(recordId);
+      }
+      merkleRoot.set(merkleTree.getRootHash());
+    }
+  }
+  
+  // --- Improved record buffer with incremental updates ---
+  class IncrementalRecordBuffer {
+    private buffer: Record<string, any> = {};
+    private flushTimeout: number | null = null;
+    
+    add(records: Record<string, any>) {
+      Object.assign(this.buffer, records);
+      
+      if (this.flushTimeout) clearTimeout(this.flushTimeout);
+      this.flushTimeout = setTimeout(() => this.flush(), 100);
+    }
+    
+    private async flush() {
+  if (Object.keys(this.buffer).length === 0) return;
 
-    // 1️⃣ Send bucket list on every new peer join (only to that peer)
+  const toProcess = { ...this.buffer };
+  this.buffer = {};
+
+  // Update store
+  recordStore.update(local => ({ ...local, ...toProcess }));
+
+  // Moderation logic: Filter records before saving to IndexedDB
+  const moderatedRecords: [string, any][] = [];
+  for (const [uuid, record] of Object.entries(toProcess)) {
+    const isApproved = await moderateRecord(record); // Your moderation function
+    if (isApproved) {
+      moderatedRecords.push([uuid, record]);
+    } else {
+      console.log(`Record ${uuid} rejected by moderation`);
+      // Optionally remove from recordStore if rejected
+      recordStore.update(local => {
+        const updated = { ...local };
+        delete updated[uuid];
+        return updated;
+      });
+    }
+  }
+
+  // Persist approved records to IndexedDB
+  await Promise.all(
+    moderatedRecords.map(([uuid, record]) => saveRecord(uuid, record))
+  );
+
+  // Incremental tree updates - O(k log n) where k is number of new records
+  if (merkleTree) {
+    for (const [, record] of moderatedRecords) {
+      merkleTree.insertRecord(record);
+    }
+    merkleRoot.set(merkleTree.getRootHash());
+  }
+}
+    
+    forceFlush() {
+      if (this.flushTimeout) {
+        clearTimeout(this.flushTimeout);
+        this.flush();
+      }
+    }
+  }
+  
+  const recordBuffer = new IncrementalRecordBuffer();
+  
+  // --- Main mount ---
+  onMount(async () => {
+    [sendRootHash, getRootHash] = room.makeAction('rootHash');
+    [sendSubtree, getSubtree] = room.makeAction('subtreeHash');
+    [sendRecords, getRecords] = room.makeAction('fullRecords');
+  
+    // 1️⃣ Load persisted records and build initial tree
+    const persisted = await getAllRecords();
+    recordStore.set(persisted);
+    
+    // Build tree once at startup - O(n log n), but only once!
+    merkleTree = new IncrementalMerkleTree(persisted);
+    merkleRoot.set(merkleTree.getRootHash());
+  
+    console.log(`Initialized Merkle tree with ${Object.keys(persisted).length} records`);
+    // Uncomment to see tree structure: merkleTree.printTree();
+  
+    // 2️⃣ Send root hash on peer join
     room.onPeerJoin(peerId => {
-      activePeers.add(peerId);
-    console.log('Peer joined:', peerId, 'Peers online:', activePeers.size);
-      console.log('[1/8] Peer joined. Sending our bucket list.');
-      bucketStore.subscribe(localBuckets => {
-        sendBucketList(localBuckets, peerId);
-        console.log('[1/8] Bucket list sent to peer', peerId);
-        statBucketsExchanged += Object.keys((localBuckets as any) || {}).length;
-        addPeerCount(peerId, 'sent', 'buckets', Object.keys((localBuckets as any) || {}).length);
-      })();
-    });
-
-    room.onPeerLeave((peerId) => {
-    activePeers.delete(peerId);
-    console.log('Peer left:', peerId, 'Peers online:', activePeers.size);
-    // optional: clean up traffic stats if you don’t want “ghost” peers in the table
-    delete peerTraffic[peerId];
-    peerTraffic = { ...peerTraffic }; // trigger reactivity
-  });
-  
-    // 2️⃣ Receive peer's bucket list → reply with our differing hashes
-    getBucketList((peerBuckets, peerId) => {
-      console.log('[2/8] Received bucket list. Computing differences.');
-      bucketStore.subscribe(localBuckets => {
-        const differing: Record<string, string> = {};
-        for (let bucketId in peerBuckets) {
-          if (localBuckets[bucketId] !== peerBuckets[bucketId]) differing[bucketId] = localBuckets[bucketId];
-        }
-        if (Object.keys(differing).length > 0) {
-          console.log('[3/8] Sending our differing bucket hashes.');
-          sendBucketDiff(differing, peerId);
-          addPeerCount(peerId, 'sent', 'buckets', Object.keys(differing).length);
-        } else {
-          console.log('[3/8] No differing hashes to send.');
-        }
-        statBucketsExchanged += Object.keys((peerBuckets as any) || {}).length;
-        addPeerCount(peerId, 'recv', 'buckets', Object.keys((peerBuckets as any) || {}).length);
-      })();
+      if (merkleTree) {
+        console.log(`Peer ${peerId} joined, sending root hash: ${merkleTree.getRootHash().substring(0, 8)}...`);
+        sendRootHash(merkleTree.getRootHash(), peerId);
+      }
     });
   
-    // 3️⃣ Receive differing hashes → send UUIDs of local records in those buckets
-    getBucketDiff((differingHashes, peerId) => {
-      console.log('[4/8] Received differing hashes. Preparing UUID lists.');
-      uuidStore.subscribe(localUUIDs => {
-        const uuidsToSend: Record<string, string[]> = {};
-        for (let bucketId in differingHashes) {
-          if (localUUIDs[bucketId]) uuidsToSend[bucketId] = localUUIDs[bucketId];
-        }
-        if (Object.keys(uuidsToSend).length > 0) {
-          console.log('[5/8] Sending UUIDs for differing buckets.');
-          sendUUIDs(uuidsToSend, peerId);
-          addPeerCount(peerId, 'sent', 'uuids', (Object.values(uuidsToSend) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0));
-        } else {
-          console.log('[5/8] No UUIDs to send for differing buckets.');
-        }
-        statUUIDsExchanged += (Object.values(uuidsToSend) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
-        addPeerCount(peerId, 'recv', 'buckets', Object.keys(differingHashes || {}).length);
-      })();
+    // 3️⃣ Receive root hash → send subtrees if differ  
+    getRootHash((peerRootHash, peerId) => {
+      if (!merkleTree) return;
+      
+      const ourRootHash = merkleTree.getRootHash();
+      console.log(`Received root hash from ${peerId}: ${peerRootHash.substring(0, 8)}... vs ours: ${ourRootHash.substring(0, 8)}...`);
+      
+      if (peerRootHash !== ourRootHash) {
+        const allSubtrees = merkleTree.getAllSubtreeHashes(3);
+        console.log(`Sending ${allSubtrees.length} subtree hashes to ${peerId}`);
+        sendSubtree(allSubtrees, peerId);
+      }
     });
   
-    // 4️⃣ Receive UUIDs → request missing full records
-    getUUIDs((peerUUIDs, peerId) => {
-      console.log('[6/8] Received UUIDs. Checking for missing records.');
-      uuidStore.subscribe(localUUIDs => {
-        recordStore.subscribe(localRecords => {
-          const missingUUIDs: string[] = [];
-          for (let bucketId in peerUUIDs) {
-            for (let uuid of peerUUIDs[bucketId]) {
-              const allLocal = (localUUIDs[bucketId]||[]).concat(Object.keys(localRecords));
-              if (!allLocal.includes(uuid)) missingUUIDs.push(uuid);
-            }
+    // 4️⃣ Receive subtree → find differences and send relevant records
+    getSubtree((peerSubtreeData: {path: string, hash: string}[], peerId) => {
+      if (!merkleTree) return;
+      
+      const differingPaths = merkleTree.findDifferingPaths(peerSubtreeData);
+      console.log(`Found ${differingPaths.length} differing paths with ${peerId}:`, differingPaths);
+      
+      if (differingPaths.length > 0) {
+        const recordIds = merkleTree.getRecordsForPaths(differingPaths);
+        const recordsToSend: Record<string, any> = {};
+        const snapshot = get(recordStore);
+        
+        for (const recordId of recordIds) {
+          if (snapshot[recordId]) {
+            recordsToSend[recordId] = snapshot[recordId];
           }
-          if (missingUUIDs.length > 0) {
-            console.log('[7/8] Requesting missing full records.', missingUUIDs.length);
-            sendRequestRecords(missingUUIDs, peerId);
-            addPeerCount(peerId, 'sent', 'requests', missingUUIDs.length);
-          } else {
-            console.log('[7/8] No missing records to request.');
-          }
-          statUUIDsExchanged += (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0);
-          addPeerCount(peerId, 'recv', 'uuids', (Object.values(peerUUIDs) as any[]).reduce((a: number, b: any) => a + ((b && b.length) || 0), 0));
-        })();
-      })();
+        }
+        
+        console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
+        sendRecordsBatched(recordsToSend, peerId);
+      }
     });
   
-    // 5️⃣ Receive record requests (UUIDs) → send full records
-    getRequestRecords((uuids, peerId) => {
-      console.log('[8/8] Peer requested records. Sending payload.');
-      recordStore.subscribe(localRecords => {
-        const payload: Record<string, any> = {};
-        for (const id of uuids) {
-          if (localRecords[id]) payload[id] = localRecords[id];
-        }
-        if (Object.keys(payload).length > 0) sendRecords(payload, peerId);
-        statRecordsExchanged += Object.keys(payload).length;
-        addPeerCount(peerId, 'recv', 'requests', uuids.length || 0);
-        addPeerCount(peerId, 'sent', 'records', Object.keys(payload).length);
-      })();
-    });
-
-    // 6️⃣ Receive full records → update stores + IndexedDB + lastActivity
-    getRecords(async (records, peerId) => {
-      // Update in-memory recordStore
-      recordStore.update(localRecords => {
-        const updated = { ...localRecords } as Record<string, any>;
-        for (let uuid in records) updated[uuid] = records[uuid];
-        return updated as any;
-      });
-  
-      // Update UUIDs per bucket
-      uuidStore.update(localUUIDs => {
-        const updated = { ...localUUIDs } as Record<string, string[]>;
-        for (let uuid in records) {
-          const bucketId = records[uuid].bucketId;
-          const list = updated[bucketId] ? [...updated[bucketId]] : [];
-          if (!list.includes(uuid)) list.push(uuid);
-          updated[bucketId] = list;
-        }
-        return updated as any;
-      });
-  
-      // Persist to IndexedDB
-      await saveRecords(records);
-  
-      // Update last activity timestamp for idle detection
+    // 5️⃣ Receive records → buffer for incremental processing
+    getRecords(async (records: Record<string, any>, peerId) => {
+      console.log(`Received ${Object.keys(records).length} records from ${peerId}`);
+      recordBuffer.add(records);
       lastActivity[peerId] = Date.now();
-
-      // Update UI counters
-      statReceivedRecords += Object.keys(records || {}).length;
-      addPeerCount(peerId, 'recv', 'records', Object.keys(records || {}).length);
     });
   
-    // 7️⃣ Idle peer check → recompute bucket hashes (rolling window) → broadcast if changed
-    const checkIdlePeers = () => {
+    // 6️⃣ Idle check → broadcast updated root
+    setInterval(() => {
       const now = Date.now();
-      for (let peerId in lastActivity) {
+      for (const peerId in lastActivity) {
         if (now - lastActivity[peerId] > IDLE_TIMEOUT) {
-          delete lastActivity[peerId]; // consider synced
-  
-          let bucketListChanged = false;
-  
-          // Recompute bucket hashes asynchronously
-          (async () => {
-            const localBuckets = get(bucketStore) as Record<string, string>;
-            const recordsMap = get(recordStore) as Record<string, any>;
-            const allRecords = Object.values(recordsMap) as any[];
-
-            const bucketMap: Record<string, string[]> = {};
-            allRecords.forEach((r: any) => {
-              if (!bucketMap[r.bucketId]) bucketMap[r.bucketId] = [];
-              bucketMap[r.bucketId].push(r.uuid);
-            });
-
-            const newBucketHashes: Record<string, string> = {};
-            const active = getActiveBuckets();
-            for (const bucketId of active) {
-              newBucketHashes[bucketId] = await computeBucketHash(
-                bucketMap[bucketId] || [],
-                Object.fromEntries(allRecords.map((r: any) => [r.uuid, r]))
-              );
-            }
-
-            // Compare and update
-            for (const k in newBucketHashes) {
-              if (newBucketHashes[k] !== localBuckets[k]) { bucketListChanged = true; break; }
-            }
-            if (bucketListChanged) {
-              bucketStore.set(newBucketHashes as any);
-              sendBucketList(newBucketHashes);
-            }
-          })();
+          delete lastActivity[peerId];
+          if (merkleTree) {
+            console.log(`Peer ${peerId} went idle, broadcasting root hash`);
+            sendRootHash(merkleTree.getRootHash());
+          }
         }
       }
-    };
-    setInterval(checkIdlePeers, 1000);
+    }, 1000);
   
-    // 8️⃣ Prune old records every 5 minutes based on inactive buckets
-    const pruneOldRecords = async () => {
-      const activeSet = new Set(getActiveBuckets());
-      const allRecords = await getAllRecords();
-      console.log('[8/8] Prune start: scanning for records outside active window.', {
-        activeBuckets: Array.from(activeSet).slice(0, 3).join(', ') + ' …',
-        totalRecords: allRecords.length
-      });
-
-      let prunedCount = 0;
-      for (let record of allRecords) {
-        if (!activeSet.has(record.bucketId)) {
-          console.log('[8/8] Prune remove:', record.uuid, 'from', record.bucketId);
-          prunedCount++;
-          await deleteRecord(record.uuid);
-
-          recordStore.update(r => {
-            const updated = { ...r } as any;
-            delete updated[record.uuid];
-            return updated;
-          });
-
-          uuidStore.update(u => {
-            const list = u[record.bucketId] || [];
-            const filtered = list.filter(id => id !== record.uuid);
-            const updated = { ...u } as Record<string, string[]>;
-            if (filtered.length > 0) updated[record.bucketId] = filtered; else delete updated[record.bucketId];
-            return updated as any;
-          });
-        }
-      }
-      console.log('[8/8] Prune complete:', { prunedCount, activeWindowSize: activeSet.size });
+    // 7️⃣ Periodic pruning with incremental updates
+    setInterval(() => pruneOldRecords(), PRUNE_INTERVAL);
+    
+    // Cleanup on unmount
+    return () => {
+      recordBuffer.forceFlush();
     };
-    setInterval(pruneOldRecords, 5*60*1000); // every 5 minutes
   });
   </script>
-  
-  <UI
-    {statReceivedRecords}
-    {statBucketsExchanged}
-    {statUUIDsExchanged}
-    {statRecordsExchanged}
-    {peerTraffic}
-  />
-  

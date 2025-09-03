@@ -1,7 +1,5 @@
 // records.js
 import { openDB } from 'idb';
-import { recordStore, uuidStore } from './tempstores.js';
-import { getBucketForDate } from './bucketUtils.js';
 
 // --- IndexedDB helpers ---
 export const initDB = async () => {
@@ -38,20 +36,3 @@ export const deleteRecord = async (uuid) => {
   const db = await initDB();
   return db.delete('records', uuid);
 };
-
-// --- Add a new record ---
-export async function addRecord(uuid, data) {
-  const bucketId = getBucketForDate();
-  const record = { uuid, data, bucketId, createdAt: new Date().toISOString() };
-
-  // Update in-memory stores (immutable)
-  recordStore.update(records => ({ ...records, [uuid]: record }));
-  uuidStore.update(buckets => {
-    const list = buckets[bucketId] ? [...buckets[bucketId]] : [];
-    list.push(uuid);
-    return { ...buckets, [bucketId]: list };
-  });
-
-  // Persist to IndexedDB
-  await saveRecord(record);
-}
