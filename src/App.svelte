@@ -58,6 +58,7 @@
   private recordIndex = new Map<string, MerkleNode>();
 
   constructor(records: Record<string, any> = {}) {
+     // Filter valid records with a hash property
     console.log('Records passed to Merkle tree:', records);
     const validRecords = Object.values(records).filter(record => record && typeof record.hash === 'string');
     console.log('Valid records:', validRecords.length);
@@ -151,6 +152,7 @@
     return newNode;
   }
 
+  // Compare hashes to decide insertion direction
   const comparison = newNode.hash.localeCompare(node.hash);
   console.debug(`Comparing hashes: ${newNode.hash.substring(0, 8)}... vs ${node.hash.substring(0, 8)}..., result: ${comparison}`);
 
@@ -159,6 +161,7 @@
   } else if (comparison > 0) {
     node.right = this.insertNode(node.right, newNode, depth + 1, maxDepth);
   } else {
+    // Handle equal hashes (e.g., collision or duplicate)
     console.warn(`Duplicate hash detected: ${newNode.hash}. Skipping insertion.`);
     return node;
   }
@@ -354,19 +357,25 @@ private getBalance(node: MerkleNode | null): number {
   
     // Compare with peer's subtree hashes to find differences
     findDifferingPaths(peerSubtrees: {path: string, hash: string}[]): string[] {
-      const peerHashMap = new Map(peerSubtrees.map(s => [s.path, s.hash]));
-      const ourSubtrees = this.getAllSubtreeHashes(3);
-      const differingPaths: string[] = [];
-  
-      for (const {path, hash} of ourSubtrees) {
-        const peerHash = peerHashMap.get(path);
-        if (!peerHash || peerHash !== hash) {
-          differingPaths.push(path);
-        }
-      }
-  
-      return differingPaths;
+  const peerHashMap = new Map(peerSubtrees.map(s => [s.path, s.hash]));
+  const ourSubtrees = this.getAllSubtreeHashes(3);
+  const differingPaths: string[] = [];
+
+  // If peer has no subtrees (empty tree), return all our paths
+  if (peerSubtrees.length === 0 && ourSubtrees.length > 0) {
+    console.log('Peer has empty tree, marking all local paths as differing');
+    return ourSubtrees.map(s => s.path);
+  }
+
+  for (const {path, hash} of ourSubtrees) {
+    const peerHash = peerHashMap.get(path);
+    if (!peerHash || peerHash !== hash) {
+      differingPaths.push(path);
     }
+  }
+
+  return differingPaths;
+}
   
     // Debug: Print tree structure
     printTree(): void {
@@ -405,9 +414,21 @@ private getBalance(node: MerkleNode | null): number {
   }
   
   function sendRecordsBatched(records: Record<string, any>, peerId?: string) {
-    const batches = batchRecords(records, 100);
-    for (const batch of batches) sendRecords(batch, peerId);
+  const batchSize = 1000; // Increase batch size for large datasets
+  const batches = batchRecords(records, batchSize);
+  let index = 0;
+
+  function sendNextBatch() {
+    if (index >= batches.length) return;
+    const batch = batches[index];
+    console.log(`Sending batch ${index + 1}/${batches.length} with ${Object.keys(batch).length} records to ${peerId || 'all peers'}`);
+    sendRecords(batch, peerId);
+    index++;
+    setTimeout(sendNextBatch, 100); // 100ms delay between batches
   }
+
+  sendNextBatch();
+}
   
   // --- Prune old records with incremental tree updates ---
   function pruneOldRecords() {
@@ -527,58 +548,80 @@ private getBalance(node: MerkleNode | null): number {
     });
   
     // 3️⃣ Receive root hash → send subtrees if differ  
-    getRootHash((peerRootHash, peerId) => {
-      initPeerTraffic(peerId);
-      if (!merkleTree) return;
+    // In App.svelte, within onMount
+getRootHash((peerRootHash, peerId) => {
+  initPeerTraffic(peerId);
+  if (!merkleTree) return;
 
-      peerTraffic[peerId].recv.requests += 1;
-      peerTraffic = { ...peerTraffic };
+  peerTraffic[peerId].recv.requests += 1;
+  peerTraffic = { ...peerTraffic };
 
-      const ourRootHash = merkleTree.getRootHash();
-      console.log(`Received root hash from ${peerId}: ${peerRootHash.substring(0, 8)}... vs ours: ${ourRootHash.substring(0, 8)}...`);
+  const ourRootHash = merkleTree.getRootHash();
+  console.log(`Received root hash from ${peerId}: ${peerRootHash.substring(0, 8)}... vs ours: ${ourRootHash.substring(0, 8)}...`);
 
-      if (peerRootHash !== ourRootHash) {
-        const allSubtrees = merkleTree.getAllSubtreeHashes(3);
-        console.log(`Sending ${allSubtrees.length} subtree hashes to ${peerId}`);
-        sendSubtree(allSubtrees, peerId);
-        peerTraffic[peerId].sent.buckets += allSubtrees.length;
-        statBucketsExchanged += allSubtrees.length;
-        peerTraffic = { ...peerTraffic };
-      }
-    });
+  if (peerRootHash !== ourRootHash) {
+    const allSubtrees = merkleTree.getAllSubtreeHashes(3);
+    console.log(`Sending ${allSubtrees.length} subtree hashes to ${peerId}`);
+    sendSubtree(allSubtrees, peerId);
+    peerTraffic[peerId].sent.buckets += allSubtrees.length;
+    statBucketsExchanged += allSubtrees.length;
+    peerTraffic = { ...peerTraffic };
+  }
+  // Handle empty peer tree (fresh peer)
+  if (!peerRootHash && ourRootHash) {
+    console.log(`Peer ${peerId} has empty tree, sending all records`);
+    const snapshot = get(recordStore);
+    const recordsToSend: Record<string, any> = { ...snapshot };
+    console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
+    sendRecordsBatched(recordsToSend, peerId);
+    peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
+    statRecordsExchanged += Object.keys(recordsToSend).length;
+    peerTraffic = { ...peerTraffic };
+  }
+});
   
     // 4️⃣ Receive subtree → find differences and send relevant records
     getSubtree((peerSubtreeData: { path: string, hash: string }[], peerId) => {
-      initPeerTraffic(peerId);
-      if (!merkleTree) return;
+  initPeerTraffic(peerId);
+  if (!merkleTree) return;
 
-      peerTraffic[peerId].recv.buckets += peerSubtreeData.length;
-      statBucketsExchanged += peerSubtreeData.length;
-      peerTraffic = { ...peerTraffic };
+  peerTraffic[peerId].recv.buckets += peerSubtreeData.length;
+  statBucketsExchanged += peerSubtreeData.length;
+  peerTraffic = { ...peerTraffic };
 
-      const differingPaths = merkleTree.findDifferingPaths(peerSubtreeData);
-      console.log(`Found ${differingPaths.length} differing paths with ${peerId}:`, differingPaths);
+  // If local tree is empty, request all records from peer's subtrees
+  if (!merkleTree.getRootHash() && peerSubtreeData.length > 0) {
+    console.log(`Local tree is empty, requesting all records for ${peerSubtreeData.length} subtrees from ${peerId}`);
+    const recordIds = peerSubtreeData.map(s => s.path); // Treat paths as placeholders to request records
+    const recordsToSend: Record<string, any> = {};
+    // Since we're empty, we can't send records, but we can request them
+    // Here, we rely on the peer to send records for these paths
+    return; // The peer will send records due to findDifferingPaths returning all paths
+  }
 
-      if (differingPaths.length > 0) {
-        const recordIds = merkleTree.getRecordsForPaths(differingPaths);
-        const recordsToSend: Record<string, any> = {};
-        const snapshot = get(recordStore);
+  const differingPaths = merkleTree.findDifferingPaths(peerSubtreeData);
+  console.log(`Found ${differingPaths.length} differing paths with ${peerId}:`, differingPaths);
 
-        for (const recordId of recordIds) {
-          if (snapshot[recordId]) {
-            recordsToSend[recordId] = snapshot[recordId];
-          }
-        }
+  if (differingPaths.length > 0) {
+    const recordIds = merkleTree.getRecordsForPaths(differingPaths);
+    const recordsToSend: Record<string, any> = {};
+    const snapshot = get(recordStore);
 
-        console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
-        sendRecordsBatched(recordsToSend, peerId);
-        peerTraffic[peerId].sent.uuids += recordIds.length;
-        peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
-        statUUIDsExchanged += recordIds.length;
-        statRecordsExchanged += Object.keys(recordsToSend).length;
-        peerTraffic = { ...peerTraffic };
+    for (const recordId of recordIds) {
+      if (snapshot[recordId]) {
+        recordsToSend[recordId] = snapshot[recordId];
       }
-    });
+    }
+
+    console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
+    sendRecordsBatched(recordsToSend, peerId);
+    peerTraffic[peerId].sent.uuids += recordIds.length;
+    peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
+    statUUIDsExchanged += recordIds.length;
+    statRecordsExchanged += Object.keys(recordsToSend).length;
+    peerTraffic = { ...peerTraffic };
+  }
+});
   
     // 5️⃣ Receive records → buffer for incremental processing
     getRecords(async (records: Record<string, any>, peerId) => {
