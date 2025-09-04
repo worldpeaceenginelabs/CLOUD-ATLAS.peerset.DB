@@ -587,7 +587,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
   });
 </script>
 
-<main style="margin:0; padding:0; width: 100%; height: 100%;">
+<main style="margin:0; padding:0; width: 95%; height: 95%;">
 
   <div style="margin:0; padding:0; background-color:dimgray;">
     <a href="https://github.com/worldpeaceenginelabs/CLOUD-ATLAS.peerset.DB"><img height="50" width="50" src="github.jpg"></a>
