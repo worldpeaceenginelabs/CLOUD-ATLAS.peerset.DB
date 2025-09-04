@@ -466,16 +466,6 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         peerTraffic = { ...peerTraffic };
       }
       
-      if (!peerRootHash && ourRootHash) {
-        console.log(`Peer ${peerId} has empty tree, sending all our records`);
-        const snapshot = get(recordStore);
-        const recordsToSend: Record<string, any> = { ...snapshot };
-        console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
-        sendRecordsBatched(recordsToSend, peerId);
-        peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
-        statRecordsSent += Object.keys(recordsToSend).length;
-        peerTraffic = { ...peerTraffic };
-      }
     });
   
     // 4️⃣ Receive subtree → find differences and send relevant records
