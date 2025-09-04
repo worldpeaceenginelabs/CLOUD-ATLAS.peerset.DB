@@ -28,32 +28,37 @@
 
 </script>
 
-<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 12px; line-height: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;">
+<main>
+<div style="margin:0; padding:0; width: 100%; height: 100%;">
+  
+  <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
   <h3 style="margin: 0 0 8px;">Sync Stats</h3>
-  <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px;">
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Peers online: <strong>{peersOnline}</strong></div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 8px;">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Peers online: <strong>{peersOnline}</strong></div>
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
       Records received: <strong>{statReceivedRecords}</strong>
     </div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
       Subtrees exchanged: <strong>{statSubtreesExchanged}</strong>
     </div>
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
       Records sent: <strong>{statRecordsSent}</strong>
     </div>
     
-    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
       Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'Empty'}</strong> 
     </div>
     
   </div>
-
-  <h3 style="margin: 16px 0 8px;">Per-peer Traffic</h3>
+  
+  <h3 style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 16px 0 8px;">Per-peer Traffic</h3>
   {#if Object.keys(peerTraffic || {}).length === 0}
     <div style="color: #666;">No peer traffic yet.</div>
   {:else}
-    <div style="max-width: 800px; overflow: auto; border: 1px solid #eee; border-radius: 6px;">
-      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+    <div style="background-color:orange; overflow: auto; border: 1px solid #eee; border-radius: 6px;">
+      <table style="width: 100%;font-size: 13px;">
         <thead>
           <tr style="background: #fafafa; color: #000;">
             <th>Peer ID</th>
@@ -66,7 +71,7 @@
         <tbody>
           {#each Object.keys(peerTraffic).sort() as pid}
             <tr>
-              <td>{pid}</td>
+              <td style="display: flex; align-items: center; justify-content: center;">{pid}</td>
               <td>{peerTraffic[pid].recv.subtrees}</td>
               <td>{peerTraffic[pid].sent.subtrees}</td>
               <td>{peerTraffic[pid].recv.records}</td>
@@ -79,15 +84,15 @@
     </div>
   {/if}
 
-  <h3 style="margin: 16px 0 8px;">Record Viewer</h3>
-  <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+  <h3 style="display: flex; align-items: center; justify-content: center; margin: 16px 0 8px;">Record Viewer</h3>
+  <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
     <label for="pageSizeInput">Page size:</label>
-    <input id="pageSizeInput" type="number" min="10" max="500" step="10" bind:value={pageSize} on:change={() => { currentPage = 1; }} style="width: 80px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;" />
+    <input id="pageSizeInput" type="number" min="10" max="500" step="10" bind:value={pageSize} on:change={() => { currentPage = 1; }} style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 80px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;" />
   </div>
 
   {#if Object.keys($recordStore || {}).length > 0}
     {#key currentPage + ':' + pageSize}
-      <div style="margin-bottom: 8px;">
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 8px;">
         <span>Total records: <strong>{Object.keys($recordStore).length}</strong></span>
       </div>
       <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
@@ -95,7 +100,7 @@
         <span>Page <strong>{currentPage}</strong> of <strong>{Math.max(1, Math.ceil(Object.keys($recordStore).length / pageSize))}</strong></span>
         <button on:click={() => currentPage = Math.min(Math.ceil(Object.keys($recordStore).length / pageSize), currentPage + 1)} disabled={currentPage >= Math.ceil(Object.keys($recordStore).length / pageSize)} style="padding: 6px 10px; border: 1px solid #999; border-radius: 4px; background: #f7f7f7; cursor: pointer;">Next</button>
       </div>
-      <div style="max-height: 420px; overflow: auto; border: 1px solid #eee; border-radius: 6px;">
+      <div style="background-color:lightblue; max-height: 420px; overflow: auto; border: 1px solid #eee; border-radius: 6px;">
         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f0f0f0; color: #000;">
@@ -146,3 +151,4 @@
     <div style="color: #666;">No records yet.</div>
   {/if}
 </div>
+</main>

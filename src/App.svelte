@@ -587,15 +587,19 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
   });
 </script>
 
-<meta name="mobile-web-app-capable" content="yes">
+<main style="margin:0; padding:0; width: 100%; height: 100%;">
 
-<div class="p-4">
-  <a href="https://github.com/worldpeaceenginelabs/CLOUD-ATLAS.peerset.DB"><img height="150" width="150" src="github.jpg"></a>
+  <div style="margin:0; padding:0; background-color:dimgray;">
+    <a href="https://github.com/worldpeaceenginelabs/CLOUD-ATLAS.peerset.DB"><img height="50" width="50" src="github.jpg"></a>
+  </div>
+
   <Ui
     {statReceivedRecords}
     {statSubtreesExchanged}
     {statRecordsSent}
     {peerTraffic}
   />
+  
   <RecordGenerator />
-</div>
+
+</main>
