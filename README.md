@@ -48,7 +48,7 @@ It stupidly syncs everything you throw at it.
 <br><br><br>
 
 - [x] Decentralized peer-to-peer network using **[Trystero](https://github.com/dmotz/trystero)**: A hash of the room name is announced on the public **[BitTorrent](https://www.bittorrent.com/)** tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)   
-- [x] **Merkle Tree** for efficient syncing of large record sets (AVL-based Merkle Tree for O(log n) operations, lazy, balancing)  
+- [x] **Incremental Merkle Tree:** AVL-balanced, allowing O(log n) updates and subtree comparisons. **Lazy Updates:** Hashes are computed asynchronously to avoid blocking operations.  
 - [x] Full record **deduplication** and **IndexedDB** persistence  
 - [x] **Broadcast and request** missing records **automatically** among peers
 - [x] Basic **Moderation & strike system**: **bad-word detection** and **regex** on text field (no link in text policy), regex check on link field
@@ -88,37 +88,83 @@ peerset.DB is a **zero-infrastructure, end-to-end encrypted, self-moderating P2P
 Only you have the Nostr keys in possession but this service offers their recovery via your email address for free: [NSTART.ME](https://nstart.me/)
 <br><br><br>
 
-# Workflow
 
-1. **Peer joins**  
-   - Send local bucket hashes to the new peer.
+Here’s a GitHub-ready version of your **peerset.DB workflow** for the README with proper Markdown formatting:
 
-2. **Compare bucket hashes**  
-   - Detect which buckets differ between peers.
+---
 
-3. **Send UUIDs**  
-   - For differing buckets, send the UUIDs of local records.
+# 🔄 peerset.DB Workflow
 
-4. **Request missing full records**  
-   - Receive missing records and update:
-     - `recordStore` (in-memory)
-     - `uuidStore` (UUID mapping per bucket)
-     - IndexedDB (persistent storage)
+A brief overview of how **peerset.DB** synchronizes records across peers using incremental Merkle trees.
 
-5. **Update bucket hashes periodically**  
-   - Idle peers trigger hash recomputation.
-   - Broadcast updated bucket hashes if changes are detected.
+---
 
-6. **Prune old records**  
-   - Automatically delete records older than 90 days.
-<br><br><br>
+## 1️⃣ Initialization
 
-## Granularity
+* Load persisted records from **IndexedDB** into `recordStore`.
+* Build an **incremental AVL-based Merkle tree** from these records.
+* Compute the initial **root hash** asynchronously.
 
-- Buckets are **daily** by default (`day1`, `day2`, …).  
-- Can be adjusted to **quarter-day, hourly, or any custom interval** by modifying:
-  - `getBucketForDate()`
-  - `TOTAL_BUCKETS`
+---
+
+## 2️⃣ Peer Join
+
+* When a new peer joins, send them the current **root hash**.
+* Track traffic statistics per peer.
+
+---
+
+## 3️⃣ Root Hash Exchange
+
+On receiving a peer's root hash:
+
+* **Fresh peer (`freshNode`)** → send all local records.
+* **Hashes differ** → send **subtree hashes** for Merkle comparison.
+* **Hashes match** → no sync needed.
+
+---
+
+## 4️⃣ Subtree Exchange
+
+On receiving peer **subtree hashes**:
+
+* Compare with local tree to find **differing paths**.
+* Extract records corresponding to differing paths and send them to the peer.
+
+---
+
+## 5️⃣ Record Reception
+
+* Received records are **buffered incrementally**.
+* Each record is **moderated** before saving.
+* After processing:
+
+  * Rebuild the Merkle tree.
+  * Update the **root hash**.
+  * Send updated root hash to the originating peer and optionally broadcast to all peers.
+
+---
+
+## 6️⃣ Idle Broadcast
+
+* If a peer is idle for a defined timeout, broadcast the latest **root hash** to ensure synchronization.
+
+---
+
+## 7️⃣ Maintenance
+
+* Periodically **prune old records** from IndexedDB and the Merkle tree (e.g., records older than 90 days).
+* Rebuild the Merkle tree as needed after pruning.
+
+---
+
+## ⚡ Key Concepts
+
+* **Incremental Merkle Tree:** AVL-balanced, allowing O(log n) updates and subtree comparisons.
+* **Lazy Updates:** Hashes are computed asynchronously to avoid blocking operations.
+* **Batching:** Records are sent in **batches** for efficient network usage.
+* **Moderation:** Incoming records are verified before integration.
+* **Peer-to-Peer Sync:** Only differences are exchanged using **root** and **subtree hashes**, minimizing data transfer.
 <br><br><br>
 
 

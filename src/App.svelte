@@ -547,26 +547,11 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
   await recordBuffer.forceFlush();
   
   // Add small delay to ensure processing is complete
-  await new Promise(resolve => setTimeout(resolve, 50));
+  await new Promise(resolve => setTimeout(resolve, 100));
   
-  if (merkleTree) {
-    const newRootHash = merkleTree.getRootHash();
-    console.log(`After processing ${recordCount} records, new root hash: ${formatHash(newRootHash)}`);
-    
-    // Send updated root hash to the specific peer who sent us records
-    sendRootHash(newRootHash, peerId);
-    peerTraffic[peerId].sent.roothashs += 1;
-    peerTraffic = { ...peerTraffic };
-    
-    // Also broadcast to all other peers after a short delay
-    setTimeout(() => {
-      console.log(`Broadcasting updated root hash to all peers: ${formatHash(newRootHash)}`);
-      sendRootHash(newRootHash);
-    }, 100);
-  }
-});
+  });
   
-    // 6️⃣ Idle check → broadcast updated root
+    // 6️⃣ Idle check → broadcast updated roothash after inactivity after onpeerjoin() 
     setInterval(() => {
       const now = Date.now();
       for (const peerId in lastActivity) {
