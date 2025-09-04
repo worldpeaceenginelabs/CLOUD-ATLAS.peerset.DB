@@ -542,11 +542,12 @@ onMount(async () => {
     lastActivity[peerId] = Date.now();
   });
 
+  // 6️⃣ Idle check → broadcast updated roothash after inactivity
+  
   // --- Interval IDs ---
   let idleInterval: any;
   let pruneInterval: any;
 
-  // 6️⃣ Idle check → broadcast updated roothash after inactivity
   idleInterval = setInterval(async () => {
     const now = Date.now();
     for (const peerId in lastActivity) {
