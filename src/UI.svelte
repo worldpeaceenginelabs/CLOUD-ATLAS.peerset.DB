@@ -4,17 +4,11 @@
   // --- UI sync stats ---
   export let statReceivedRecords = 0;
   export let statSubtreesExchanged = 0;
-  export let statRecordsRequested = 0;
-  export let statRecordsExchanged = 0;
-  export let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
+  export let statRecordsSent = 0;
+  export let peerTraffic: Record<string, { sent: { roothashs: number; subtrees: number; records: number }, recv: { roothashs: number; subtrees: number; records: number } }> = {};
 
   // Derive peers online
   $: peersOnline = Object.keys(peerTraffic || {}).length;
-
-  const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-  let lastGenMs = 0;
-  let lastGenKB = 0;
 
   // Record viewer state
   let pageSize = 50;
@@ -34,9 +28,10 @@
 
 </script>
 
-<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 12px; line-height: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;">
+<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 12px; line-height: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;">
   <h3 style="margin: 0 0 8px;">Sync Stats</h3>
-  <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; max-width: 600px;">
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px;">
+    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">Peers online: <strong>{peersOnline}</strong></div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
       Records received: <strong>{statReceivedRecords}</strong>
     </div>
@@ -44,7 +39,7 @@
       Subtrees exchanged: <strong>{statSubtreesExchanged}</strong>
     </div>
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
-      Records sent: <strong>{statRecordsExchanged}</strong>
+      Records sent: <strong>{statRecordsSent}</strong>
     </div>
     
     <div style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
@@ -62,10 +57,10 @@
         <thead>
           <tr style="background: #fafafa; color: #000;">
             <th>Peer ID</th>
-            <th>Recv: Subtrees</th>
-            <th>Sent: Subtrees</th>
-            <th>Recv: Records</th>
-            <th>Sent: Records</th>
+            <th>Recv Sub</th>
+            <th>Sent: Sub</th>
+            <th>Rec: Rec</th>
+            <th>Sent: Rec</th>
           </tr>
         </thead>
         <tbody>

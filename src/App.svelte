@@ -14,9 +14,8 @@
   // --- Stats for UI ---
   let statReceivedRecords = 0;
   let statSubtreesExchanged = 0;
-  let statRecordsRequested = 0;
-  let statRecordsExchanged = 0;
-  let peerTraffic: Record<string, { sent: { buckets: number; uuids: number; requests: number; records: number }, recv: { buckets: number; uuids: number; requests: number; records: number } }> = {};
+  let statRecordsSent = 0;
+  let peerTraffic: Record<string, { sent: { roothashs: number; subtrees: number; records: number }, recv: { roothashs: number; subtrees: number; records: number } }> = {};
   
   // --- Trystero setup ---
   const config = { appId: 'testpeer' };
@@ -40,8 +39,8 @@
   function initPeerTraffic(peerId: string) {
     if (!peerTraffic[peerId]) {
       peerTraffic[peerId] = {
-        sent: { buckets: 0, uuids: 0, requests: 0, records: 0 },
-        recv: { buckets: 0, uuids: 0, requests: 0, records: 0 }
+        sent: { roothashs: 0, subtrees: 0, records: 0},
+        recv: { roothashs: 0, subtrees: 0, records: 0}
       };
       peerTraffic = { ...peerTraffic };
     }
@@ -438,7 +437,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
       const currentRootHash = merkleTree?.getRootHash() || '';
       console.log(`Peer ${peerId} joined, sending root hash: ${formatHash(currentRootHash)}`);
       sendRootHash(currentRootHash, peerId);
-      peerTraffic[peerId].sent.requests += 1;
+      peerTraffic[peerId].sent.roothashs += 1;
       peerTraffic = { ...peerTraffic };
     });
   
@@ -452,7 +451,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         await rebuildMerkleTree(currentRecords);
       }
 
-      peerTraffic[peerId].recv.requests += 1;
+      peerTraffic[peerId].recv.roothashs += 1;
       peerTraffic = { ...peerTraffic };
 
       const ourRootHash = merkleTree?.getRootHash() || '';
@@ -462,7 +461,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         const allSubtrees = merkleTree?.getAllSubtreeHashes(3) || [];
         console.log(`Root hashes differ, sending ${allSubtrees.length} subtree hashes to ${peerId}`);
         sendSubtree(allSubtrees, peerId);
-        peerTraffic[peerId].sent.buckets += allSubtrees.length;
+        peerTraffic[peerId].sent.subtrees += allSubtrees.length;
         statSubtreesExchanged += allSubtrees.length;
         peerTraffic = { ...peerTraffic };
       }
@@ -474,7 +473,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
         sendRecordsBatched(recordsToSend, peerId);
         peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
-        statRecordsExchanged += Object.keys(recordsToSend).length;
+        statRecordsSent += Object.keys(recordsToSend).length;
         peerTraffic = { ...peerTraffic };
       }
     });
@@ -489,7 +488,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         await rebuildMerkleTree(currentRecords);
       }
 
-      peerTraffic[peerId].recv.buckets += peerSubtreeData.length;
+      peerTraffic[peerId].recv.subtrees += peerSubtreeData.length;
       statSubtreesExchanged += peerSubtreeData.length;
       peerTraffic = { ...peerTraffic };
 
@@ -498,7 +497,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         console.log(`Local tree is empty, requesting records for ${peerSubtreeData.length} subtrees from ${peerId}`);
         const ourSubtrees = merkleTree?.getAllSubtreeHashes(3) || [];
         sendSubtree(ourSubtrees, peerId);
-        peerTraffic[peerId].sent.buckets += ourSubtrees.length;
+        peerTraffic[peerId].sent.subtrees += ourSubtrees.length;
         statSubtreesExchanged += ourSubtrees.length;
         peerTraffic = { ...peerTraffic };
         return;
@@ -519,11 +518,9 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
         }
         
         console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
-        sendRecordsBatched(recordsToSend, peerId);
-        peerTraffic[peerId].sent.uuids += recordIds.length;
+        sendRecordsBatched(recordsToSend, peerId);        
         peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
-        statRecordsRequested += recordIds.length;
-        statRecordsExchanged += Object.keys(recordsToSend).length;
+        statRecordsSent += Object.keys(recordsToSend).length;
         peerTraffic = { ...peerTraffic };
       }
     });
@@ -553,7 +550,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
     
     // Send updated root hash to the specific peer who sent us records
     sendRootHash(newRootHash, peerId);
-    peerTraffic[peerId].sent.requests += 1;
+    peerTraffic[peerId].sent.roothashs += 1;
     peerTraffic = { ...peerTraffic };
     
     // Also broadcast to all other peers after a short delay
@@ -574,7 +571,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
             const rootHash = merkleTree.getRootHash();
             console.log(`Peer ${peerId} went idle, broadcasting root hash: ${formatHash(rootHash)}`);
             sendRootHash(rootHash);
-            peerTraffic[peerId].sent.requests += 1;
+            peerTraffic[peerId].sent.roothashs += 1;
             peerTraffic = { ...peerTraffic };
           }
         }
@@ -597,8 +594,7 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
   <Ui
     {statReceivedRecords}
     {statSubtreesExchanged}
-    {statRecordsRequested}
-    {statRecordsExchanged}
+    {statRecordsSent}
     {peerTraffic}
   />
   <RecordGenerator />
