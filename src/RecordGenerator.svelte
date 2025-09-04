@@ -57,7 +57,7 @@
   
         record.integrity.hash = await sha256(hashInput);
   
-        await saveRecord(record);
+        await saveRecord(record.uuid, record);
       }
       alert(`${count} records generated and saved!`);
     }

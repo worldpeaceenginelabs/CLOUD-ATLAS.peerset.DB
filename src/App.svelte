@@ -85,7 +85,7 @@
     }
 
     getRootHash(): string {
-      return this.root?.hash || '';
+    return this.root?.hash || 'freshNode';
     }
 
     private bulkInsert(records: any[]) {
@@ -443,30 +443,45 @@ private collectAllRecordsInSubtree(node: MerkleNode | null, recordIds: Set<strin
   
     // 3️⃣ Receive root hash → send subtrees if differ
     getRootHash(async (peerRootHash, peerId) => {
-      initPeerTraffic(peerId);
-      
-      if (!merkleTree) {
-        console.warn(`Merkle tree not ready for peer ${peerId}, rebuilding...`);
-        const currentRecords = get(recordStore);
-        await rebuildMerkleTree(currentRecords);
-      }
+    initPeerTraffic(peerId);
+    
+    if (!merkleTree) {
+      console.warn(`Merkle tree not ready for peer ${peerId}, rebuilding...`);
+      const currentRecords = get(recordStore);
+      await rebuildMerkleTree(currentRecords);
+    }
 
-      peerTraffic[peerId].recv.roothashs += 1;
+    peerTraffic[peerId].recv.roothashs += 1;
+    peerTraffic = { ...peerTraffic };
+
+    const ourRootHash = merkleTree?.getRootHash() || '';
+    console.log(`Received root hash from ${peerId}: ${formatHash(peerRootHash)} vs ours: ${formatHash(ourRootHash)}`);
+
+    // Handle fresh node case first (most efficient - send all records)
+    if (peerRootHash === 'freshNode' && ourRootHash !== 'freshNode') {
+      console.log(`Peer ${peerId} is freshNode, sending all our records`);
+      const snapshot = get(recordStore);
+      const recordsToSend: Record<string, any> = { ...snapshot };
+      console.log(`Sending ${Object.keys(recordsToSend).length} records to ${peerId}`);
+      sendRecordsBatched(recordsToSend, peerId);
+      peerTraffic[peerId].sent.records += Object.keys(recordsToSend).length;
+      statRecordsSent += Object.keys(recordsToSend).length;
       peerTraffic = { ...peerTraffic };
-
-      const ourRootHash = merkleTree?.getRootHash() || '';
-      console.log(`Received root hash from ${peerId}: ${formatHash(peerRootHash)} vs ours: ${formatHash(ourRootHash)}`);
-
-      if (peerRootHash !== ourRootHash) {
-        const allSubtrees = merkleTree?.getAllSubtreeHashes(3) || [];
-        console.log(`Root hashes differ, sending ${allSubtrees.length} subtree hashes to ${peerId}`);
-        sendSubtree(allSubtrees, peerId);
-        peerTraffic[peerId].sent.subtrees += allSubtrees.length;
-        statSubtreesExchanged += allSubtrees.length;
-        peerTraffic = { ...peerTraffic };
-      }
-      
-    });
+    }
+    // Handle case where both have hashes but they differ (Merkle sync)
+    else if (peerRootHash !== 'freshNode' && ourRootHash !== 'freshNode' && peerRootHash !== ourRootHash) {
+      const allSubtrees = merkleTree?.getAllSubtreeHashes(3) || [];
+      console.log(`Root hashes differ, sending ${allSubtrees.length} subtree hashes to ${peerId}`);
+      sendSubtree(allSubtrees, peerId);
+      peerTraffic[peerId].sent.subtrees += allSubtrees.length;
+      statSubtreesExchanged += allSubtrees.length;
+      peerTraffic = { ...peerTraffic };
+    }
+    // Handle case where hashes match (do nothing)
+    else if (peerRootHash === ourRootHash && peerRootHash !== 'freshNode') {
+      console.log(`Root hashes match with ${peerId}, no sync needed`);
+    }
+  });
   
     // 4️⃣ Receive subtree → find differences and send relevant records
     getSubtree(async (peerSubtreeData: { path: string, hash: string }[], peerId) => {

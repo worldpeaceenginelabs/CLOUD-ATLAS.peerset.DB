@@ -48,7 +48,7 @@
     </div>
     
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
-      Root hash: <strong>{$merkleRoot ? $merkleRoot.substring(0, 8) + '...' : 'Empty'}</strong> 
+      Root hash: <strong>{$merkleRoot.substring(0, 9)}</strong> 
     </div>
     
   </div>
