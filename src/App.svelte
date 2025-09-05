@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { joinRoom } from 'trystero/torrent';
+  import { joinRoom, selfId } from 'trystero/torrent';
   import { get } from 'svelte/store';
   import { getAllRecords, saveRecord } from './db.js';
   import { sha256 } from './secp256k1.js';
@@ -17,7 +17,7 @@
   let statSubtreesExchanged = 0;
   let peerTraffic: Record<string, { sent: number; recv: number }> = {};
   const lastActivity: Record<string, number> = {};
-  const IDLE_TIMEOUT = 5000;
+  const IDLE_TIMEOUT = 1000 * 60 * 5; // Increased from 5000 to 10000ms
   
   // --- P2P ---
   const config = { appId: 'simpleSync' };
@@ -25,6 +25,7 @@
   
   let sendRootHash, getRootHash, sendRecords, getRecords, sendSubtree, getSubtree;
   let processingRecords = false;
+  let syncInProgress: Record<string, boolean> = {}; // Track sync state per peer
   
   // --- Helper Functions ---
   function initPeer(peerId: string) {
@@ -58,10 +59,10 @@
       return { hash: await sha256(''), uuids: [], isLeaf: true };
     }
   
-    // Create leaves with UUIDs
+    // Create leaves with record hashes
     let nodes: MerkleNode[] = keys.map(uuid => ({
-      hash: records[uuid],
-      uuids: [uuid],
+      hash: records[uuid], // records[uuid] contains the hash from recordStore
+      uuids: [uuid], // UUIDs are for identifying records in IDB
       isLeaf: true
     }));
   
@@ -128,6 +129,37 @@
     
     return [...leftMissing, ...rightMissing];
   }
+
+  // ✅ New: Find what we're missing from them
+  function findWhatWeNeed(theirNode: MerkleNode, ourNode?: MerkleNode): string[] {
+    // If we don't have this subtree, we need all their UUIDs
+    if (!ourNode) {
+      return theirNode.uuids;
+    }
+    
+    // If hashes match, no differences in this subtree
+    if (theirNode.hash === ourNode.hash) {
+      return [];
+    }
+    
+    // If they're at a leaf, we need this UUID (they have it, we don't)
+    if (theirNode.isLeaf) {
+      return theirNode.uuids;
+    }
+    
+    // Recurse into children
+    const leftNeeded = findWhatWeNeed(
+      theirNode.left!,
+      ourNode.left
+    );
+    
+    const rightNeeded = findWhatWeNeed(
+      theirNode.right!,
+      ourNode.right
+    );
+    
+    return [...leftNeeded, ...rightNeeded];
+  }
   
   // ✅ New: Find which subtrees to request from peer
   function findNeededSubtrees(localNode: MerkleNode, remoteNode?: MerkleNode): MerkleNode[] {
@@ -171,6 +203,7 @@
     const localRoot = await buildMerkleTreeNodes(hashMap);
     merkleRoot.set(localRoot.hash);
     console.log(`[SimpleSync] Loaded ${Object.keys(hashMap).length} persisted records`);
+    console.log(`[SimpleSync] My peer ID: ${selfId}`);
   
     // Peer joins
     room.onPeerJoin(peerId => {
@@ -199,8 +232,24 @@
       if (peerData.rootHash !== localRoot.hash) {
         console.log(`[SimpleSync] Root differs with peer ${peerId}. Requesting subtrees...`);
         
-        // Request their root subtree to start comparison
-        sendSubtree({ requestRoot: true }, peerId);
+        // Only start sync if we have a "lower" peer ID (deterministic sync initiation)
+        const myPeerId = selfId;
+        const shouldInitiateSync = myPeerId < peerId;
+        
+        if (shouldInitiateSync && !syncInProgress[peerId]) {
+          console.log(`[SimpleSync] ✅ Starting sync with ${peerId} (my ID: ${myPeerId})`);
+          syncInProgress[peerId] = true;
+          // Request their root subtree to start comparison
+          sendSubtree({ requestRoot: true }, peerId);
+          
+          // Reset sync state after timeout (in case something goes wrong)
+          setTimeout(() => {
+            console.log(`[SimpleSync] Sync timeout with ${peerId}, resetting state`);
+            syncInProgress[peerId] = false;
+          }, 10000); // 10 second timeout
+        } else {
+          console.log(`[SimpleSync] ❌ Not initiating sync with ${peerId} (my ID: ${myPeerId}, should initiate: ${shouldInitiateSync}, in progress: ${syncInProgress[peerId]})`);
+        }
       }
   
       lastActivity[peerId] = Date.now();
@@ -211,6 +260,7 @@
       initPeer(peerId);
       
       if (request.requestRoot) {
+        console.log(`[SimpleSync] 📤 Sending tree to ${peerId} for comparison`);
         // Send our full tree for comparison
         const localHashes = get(recordStore);
         const localRoot = await buildMerkleTreeNodes(localHashes);
@@ -223,34 +273,16 @@
         const localHashes = get(recordStore);
         const localRoot = await buildMerkleTreeNodes(localHashes);
         
-        // Find what we have that they're missing
-        const theyNeed = findMissingUUIDs(localRoot, request.tree);
-        
-        // Find what they have that we're missing  
-        const weNeed = findMissingUUIDs(request.tree, localRoot);
-        
-        // Send them what they need
-        if (theyNeed.length > 0) {
-          const allRecords = await getAllRecords();
-          const toSend: Record<string, any> = {};
-          for (const uuid of theyNeed) {
-            if (allRecords[uuid]) {
-              toSend[uuid] = allRecords[uuid];
-            }
-          }
-          
-          if (Object.keys(toSend).length > 0) {
-            sendRecords(toSend, peerId);
-            statRecordsSent += Object.keys(toSend).length;
-            peerTraffic[peerId].sent += Object.keys(toSend).length;
-            console.log(`[SimpleSync] Sent ${Object.keys(toSend).length} records to ${peerId}`);
-          }
-        }
+                         // Find what we're missing from them (unidirectional)
+        const weNeed = findWhatWeNeed(request.tree, localRoot);
         
         // Request what we need from them
         if (weNeed.length > 0) {
+          console.log(`[SimpleSync] 🔍 Requesting ${weNeed.length} records from ${peerId}:`, weNeed);
           sendSubtree({ requestUUIDs: weNeed }, peerId);
           statSubtreesExchanged++;
+        } else {
+          console.log(`[SimpleSync] ✅ No records needed from ${peerId}`);
         }
       }
       
@@ -265,6 +297,7 @@
         }
         
         if (Object.keys(toSend).length > 0) {
+          console.log(`[SimpleSync] 📤 Sending ${Object.keys(toSend).length} records to ${peerId}:`, Object.keys(toSend));
           sendRecords(toSend, peerId);
           statRecordsSent += Object.keys(toSend).length;
           peerTraffic[peerId].sent += Object.keys(toSend).length;
@@ -279,8 +312,9 @@
       if (processingRecords) return;
       processingRecords = true;
       initPeer(peerId);
-  
+
       const incomingCount = Object.keys(records).length;
+      console.log(`[SimpleSync] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
       statReceivedRecords += incomingCount;
       peerTraffic[peerId].recv += incomingCount;
   
@@ -295,9 +329,13 @@
       const hashes = get(recordStore);
       const root = await buildMerkleTreeNodes(hashes);
       merkleRoot.set(root.hash);
-  
-      lastActivity[peerId] = Date.now();
+
+      // Don't update lastActivity here to prevent immediate re-sync
+      //       lastActivity[peerId] = Date.now();
       processingRecords = false;
+      
+      // Mark sync as complete for this peer
+      syncInProgress[peerId] = false;
     });
   
     // ✅ Fixed: Periodic sync with just root hash
