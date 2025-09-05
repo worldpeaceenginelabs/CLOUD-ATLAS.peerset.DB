@@ -2,7 +2,29 @@ import * as secp from '@noble/secp256k1';
 
 const { schnorr } = secp;
 
-export async function sha256(msg: Uint8Array): Promise<Uint8Array> {
+
+// secp256k1.ts
+export async function sha256(msg: string | Uint8Array): Promise<string> {
+  let data: Uint8Array;
+
+  if (typeof msg === 'string') {
+    // Encode string as UTF-8
+    data = new TextEncoder().encode(msg);
+  } else {
+    // Already Uint8Array
+    data = msg;
+  }
+
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  // Convert buffer to hex
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+
+
+export async function sha256msg (msg: Uint8Array): Promise<Uint8Array> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', msg);
   return new Uint8Array(hashBuffer);
 }
