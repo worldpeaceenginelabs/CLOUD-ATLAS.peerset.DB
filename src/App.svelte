@@ -8,7 +8,7 @@
   import Ui from './UI.svelte';
   
   // --- Stores ---
-  import { recordStore, merkleRoot } from './stores';
+  import { hashMapStore, merkleRoot } from './stores';
   import RecordGenerator from './RecordGenerator.svelte';
   
   // --- Stats ---
@@ -16,8 +16,8 @@
   let statReceivedRecords = 0;
   let statSubtreesExchanged = 0;
   let peerTraffic: Record<string, { 
-    sent: { roothashs: number; subtrees: number; records: number }; 
-    recv: { roothashs: number; subtrees: number; records: number } 
+    sent: { rootHashes: number; subtrees: number; records: number }; 
+    recv: { rootHashes: number; subtrees: number; records: number } 
   }> = {};
   const lastActivity: Record<string, number> = {};
   const IDLE_TIMEOUT = 1000 * 60 * 5; // Increased from 5000 to 10000ms
@@ -32,15 +32,15 @@
   let syncTimeouts: Record<string, NodeJS.Timeout> = {}; // Track sync timeouts for cleanup
   let merkleTreeCache: { hashes: Record<string, string>; root: MerkleNode; timestamp: number } | null = null;
   const MERKLE_CACHE_TTL = 1000; // Cache Merkle tree for 1 second
-  let recordStoreUpdateQueue: Array<{ uuid: string; hash: string }> = [];
-  let isUpdatingRecordStore = false;
+  let hashMapStoreUpdateQueue: Array<{ uuid: string; hash: string }> = [];
+  let isUpdatingHashMapStore = false;
   
   // --- Helper Functions ---
   function initPeer(peerId: string) {
     if (!peerTraffic[peerId]) {
       peerTraffic[peerId] = { 
-        sent: { roothashs: 0, subtrees: 0, records: 0 }, 
-        recv: { roothashs: 0, subtrees: 0, records: 0 } 
+        sent: { rootHashes: 0, subtrees: 0, records: 0 }, 
+        recv: { rootHashes: 0, subtrees: 0, records: 0 } 
       };
     }
     if (!lastActivity[peerId]) lastActivity[peerId] = Date.now();
@@ -73,20 +73,20 @@
     return root;
   }
 
-  // ✅ FIXED: Thread-safe record store update
-  async function updateRecordStore(uuid: string, hash: string): Promise<void> {
-    recordStoreUpdateQueue.push({ uuid, hash });
+  // ✅ FIXED: Thread-safe hash map store update
+  async function updateHashMapStore(uuid: string, hash: string): Promise<void> {
+    hashMapStoreUpdateQueue.push({ uuid, hash });
     
-    if (isUpdatingRecordStore) {
+    if (isUpdatingHashMapStore) {
       return; // Another update is in progress, this will be processed in the queue
     }
     
-    isUpdatingRecordStore = true;
+    isUpdatingHashMapStore = true;
     
     try {
-      while (recordStoreUpdateQueue.length > 0) {
-        const updates = recordStoreUpdateQueue.splice(0); // Take all pending updates
-        recordStore.update(local => {
+      while (hashMapStoreUpdateQueue.length > 0) {
+        const updates = hashMapStoreUpdateQueue.splice(0); // Take all pending updates
+        hashMapStore.update(local => {
           const updated = { ...local };
           for (const update of updates) {
             updated[update.uuid] = update.hash;
@@ -95,7 +95,7 @@
         });
       }
     } finally {
-      isUpdatingRecordStore = false;
+      isUpdatingHashMapStore = false;
     }
   }
   
@@ -108,7 +108,7 @@
       }
 
       await saveRecord(uuid, record);
-      await updateRecordStore(uuid, record.integrity.hash);
+      await updateHashMapStore(uuid, record.integrity.hash);
       return true;
     } catch (error) {
       console.error(`[SimpleSync] Error processing record ${uuid}:`, error);
@@ -276,7 +276,7 @@
   // --- Main P2P Sync Workflow ---
   onMount(async () => {
     [sendRootHash, getRootHash] = room.makeAction('rootHash');
-    [sendRecords, getRecords] = room.makeAction('fullRecords');
+    [sendRecords, getRecords] = room.makeAction('fullRecord');
     [sendSubtree, getSubtree] = room.makeAction('subtree'); // ✅ New subtree exchange
   
     // Load persisted records
@@ -285,10 +285,10 @@
     for (const [uuid, record] of Object.entries(persisted)) {
       hashMap[uuid] = record.integrity.hash;
     }
-    recordStore.set(hashMap);
+    hashMapStore.set(hashMap);
   
-    const localRoot = await buildMerkleTreeNodes(hashMap);
-    merkleRoot.set(localRoot.hash);
+    const localMerkleRoot = await buildMerkleTreeNodes(hashMap);
+    merkleRoot.set(localMerkleRoot.hash);
     console.log(`[SimpleSync] Loaded ${Object.keys(hashMap).length} persisted records`);
     console.log(`[SimpleSync] My peer ID: ${selfId}`);
   
@@ -297,8 +297,8 @@
       console.log(`[SimpleSync] Peer ${peerId} joined`);
       initPeer(peerId);
       // ✅ Send only root hash first, not full tree
-      sendRootHash({ rootHash: localRoot.hash }, peerId);
-      peerTraffic[peerId].sent.roothashs++;
+      sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
+      peerTraffic[peerId].sent.rootHashes++;
     });
   
     // Peer leaves
@@ -319,12 +319,12 @@
     getRootHash(async (peerData, peerId) => {
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
-      peerTraffic[peerId].recv.roothashs++;
+      peerTraffic[peerId].recv.rootHashes++;
 
-      const localHashes = get(recordStore);
-      const localRoot = await getMerkleTree(localHashes);
+      const localHashes = get(hashMapStore);
+      const localMerkleRoot = await getMerkleTree(localHashes);
 
-      if (peerData.rootHash !== localRoot.hash) {
+      if (peerData.merkleRoot !== localMerkleRoot.hash) {
         console.log(`[SimpleSync] Root differs with peer ${peerId}. Starting stateless sync...`);
         
         // ✅ FIXED: Check sync state atomically before starting
@@ -363,17 +363,17 @@
       if (request.requestRoot) {
         console.log(`[SimpleSync] 📤 Sending tree to ${peerId} for comparison`);
         // Send our full tree for comparison
-        const localHashes = get(recordStore);
-        const localRoot = await getMerkleTree(localHashes);
-        sendSubtree({ tree: localRoot }, peerId);
+        const localHashes = get(hashMapStore);
+        const localMerkleRoot = await getMerkleTree(localHashes);
+        sendSubtree({ tree: localMerkleRoot }, peerId);
         peerTraffic[peerId].sent.subtrees++;
         return;
       }
       
       if (request.tree) {
         // This is a tree comparison - find what we need from them (stateless)
-        const localHashes = get(recordStore);
-        const localRoot = await getMerkleTree(localHashes);
+        const localHashes = get(hashMapStore);
+        const localMerkleRoot = await getMerkleTree(localHashes);
         
         // Debug: Log what we have vs what they have
         console.log(`[SimpleSync] 🔍 Comparing trees with ${peerId}:`);
@@ -398,11 +398,11 @@
       
       if (request.requestUUIDs) {
         // Send specific records they requested
-        const allRecords = await getAllRecords();
+        const fullRecord = await getAllRecords();
         const toSend: Record<string, any> = {};
         for (const uuid of request.requestUUIDs) {
-          if (allRecords[uuid]) {
-            toSend[uuid] = allRecords[uuid];
+          if (fullRecord[uuid]) {
+            toSend[uuid] = fullRecord[uuid];
           }
         }
         
@@ -442,9 +442,9 @@
         console.log(`[SimpleSync] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
     
         // Update Merkle root using cached version
-        const hashes = get(recordStore);
-        const root = await getMerkleTree(hashes);
-        merkleRoot.set(root.hash);
+        const hashes = get(hashMapStore);
+        const localMerkleRoot = await getMerkleTree(hashes);
+        merkleRoot.set(localMerkleRoot.hash);
 
         // Don't update lastActivity here to prevent immediate re-sync
         //       lastActivity[peerId] = Date.now();
@@ -463,10 +463,10 @@
       for (const peerId in lastActivity) {
         if (now - lastActivity[peerId] > IDLE_TIMEOUT) {
           console.log(`[SimpleSync] Peer ${peerId} idle, sending root hash`);
-          const hashes = get(recordStore);
-          const root = await getMerkleTree(hashes);
-          sendRootHash({ rootHash: root.hash }, peerId);
-          peerTraffic[peerId].sent.roothashs++;
+          const hashes = get(hashMapStore);
+          const localMerkleRoot = await getMerkleTree(hashes);
+          sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
+          peerTraffic[peerId].sent.rootHashes++;
         }
       }
     }, 1000);

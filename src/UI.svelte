@@ -10,8 +10,8 @@
   export let peerTraffic: Record<
     string,
     {
-      sent: { roothashs: number; subtrees: number; records: number },
-      recv: { roothashs: number; subtrees: number; records: number }
+      sent: { rootHashes: number; subtrees: number; records: number },
+      recv: { rootHashes: number; subtrees: number; records: number }
     }
   > = {};
 
@@ -33,7 +33,7 @@
 
   // Derive paged records from fullRecords
   $: pagedRecords = (() => {
-    const allRecords = Object.values(fullRecords || {}).sort((a, b) => {
+    const records = Object.values(fullRecords || {}).sort((a, b) => {
       const aCreated =
         a.createdAt ||
         (a.created_at ? new Date(a.created_at).toISOString() : '') ||
@@ -45,7 +45,7 @@
       return aCreated.localeCompare(bCreated);
     });
     const start = (currentPage - 1) * pageSize;
-    return allRecords.slice(start, start + pageSize);
+    return records.slice(start, start + pageSize);
   })();
 </script>
 
