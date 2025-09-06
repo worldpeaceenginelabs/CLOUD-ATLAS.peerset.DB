@@ -118,22 +118,6 @@
     }
   }
   
-  async function processRecord(uuid: string, record: any): Promise<boolean> {
-    try {
-      const approved = await moderateRecord(record);
-      if (!approved) {
-        console.log(`[SimpleSync] Record ${uuid} rejected by moderation`);
-        return false;
-      }
-
-      await saveRecord(uuid, record);
-      await updateHashMapStore(uuid, record.integrity.hash);
-      return true;
-    } catch (error) {
-      console.error(`[SimpleSync] Error processing record ${uuid}:`, error);
-      return false;
-    }
-  }
   
   // --- Fixed Merkle Tree ---
   interface MerkleNode {
@@ -457,7 +441,19 @@
     
         let processedCount = 0;
         for (const [uuid, record] of Object.entries(records)) {
-          if (await processRecord(uuid, record)) processedCount++;
+          try {
+            const approved = await moderateRecord(record);
+            if (!approved) {
+              console.log(`[SimpleSync] Record ${uuid} rejected by moderation`);
+              continue;
+            }
+
+            await saveRecord(uuid, record);
+            await updateHashMapStore(uuid, record.integrity.hash);
+            processedCount++;
+          } catch (error) {
+            console.error(`[SimpleSync] Error processing record ${uuid}:`, error);
+          }
         }
     
         console.log(`[SimpleSync] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
