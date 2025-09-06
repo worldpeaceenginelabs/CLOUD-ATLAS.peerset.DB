@@ -5,7 +5,7 @@
  */
 export async function moderateRecord(record) {
   // Temporarily bypass moderation for testing
-  console.log('Moderation bypassed for testing: Allowing all records');
+  // console.log('Moderation bypassed for testing: Allowing all records');
   return true;
 }
 
@@ -33,8 +33,8 @@ export async function moderateRecord(record) {
   
       // 2. Validate schema fields
       if (
-        !record.id ||
-        typeof record.id !== 'string' ||
+        !record.uuid ||
+        typeof record.uuid !== 'string' ||
         !record.created_at ||
         typeof record.created_at !== 'number' ||
         !record.bucket ||

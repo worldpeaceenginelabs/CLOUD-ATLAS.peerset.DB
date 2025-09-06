@@ -25,7 +25,6 @@
       for (let i = 0; i < count; i++) {
         const record = {
           uuid: crypto.randomUUID(), // used as IndexedDB key
-          id: randomString(12),
           created_at: Date.now(),
           bucket: randomString(6),
           author: {
@@ -44,10 +43,10 @@
             signature: "sig_" + randomString(32)
           }
         };
-  
+
         // build hash from all data except integrity
         const hashInput = JSON.stringify({
-          id: record.id,
+          uuid: record.uuid,
           created_at: record.created_at,
           bucket: record.bucket,
           author: record.author,
