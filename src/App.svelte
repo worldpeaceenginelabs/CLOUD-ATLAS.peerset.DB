@@ -27,9 +27,13 @@
   const room = joinRoom(config, 'simpleRoom');
   
   let sendRootHash, getRootHash, sendRecords, getRecords, sendSubtree, getSubtree;
-  let processingRecords = false;
+  let processingRecords: Record<string, boolean> = {}; // Track record processing per peer
   let syncInProgress: Record<string, boolean> = {}; // Track sync state per peer
   let syncTimeouts: Record<string, NodeJS.Timeout> = {}; // Track sync timeouts for cleanup
+  let merkleTreeCache: { hashes: Record<string, string>; root: MerkleNode; timestamp: number } | null = null;
+  const MERKLE_CACHE_TTL = 1000; // Cache Merkle tree for 1 second
+  let recordStoreUpdateQueue: Array<{ uuid: string; hash: string }> = [];
+  let isUpdatingRecordStore = false;
   
   // --- Helper Functions ---
   function initPeer(peerId: string) {
@@ -49,6 +53,50 @@
       delete syncTimeouts[peerId];
     }
     delete syncInProgress[peerId];
+    delete processingRecords[peerId];
+  }
+
+  // Get cached Merkle tree or build new one
+  async function getMerkleTree(hashes: Record<string, string>): Promise<MerkleNode> {
+    const now = Date.now();
+    
+    // Check if cache is valid
+    if (merkleTreeCache && 
+        now - merkleTreeCache.timestamp < MERKLE_CACHE_TTL &&
+        JSON.stringify(merkleTreeCache.hashes) === JSON.stringify(hashes)) {
+      return merkleTreeCache.root;
+    }
+    
+    // Build new tree and cache it
+    const root = await buildMerkleTreeNodes(hashes);
+    merkleTreeCache = { hashes: { ...hashes }, root, timestamp: now };
+    return root;
+  }
+
+  // ✅ FIXED: Thread-safe record store update
+  async function updateRecordStore(uuid: string, hash: string): Promise<void> {
+    recordStoreUpdateQueue.push({ uuid, hash });
+    
+    if (isUpdatingRecordStore) {
+      return; // Another update is in progress, this will be processed in the queue
+    }
+    
+    isUpdatingRecordStore = true;
+    
+    try {
+      while (recordStoreUpdateQueue.length > 0) {
+        const updates = recordStoreUpdateQueue.splice(0); // Take all pending updates
+        recordStore.update(local => {
+          const updated = { ...local };
+          for (const update of updates) {
+            updated[update.uuid] = update.hash;
+          }
+          return updated;
+        });
+      }
+    } finally {
+      isUpdatingRecordStore = false;
+    }
   }
   
   async function processRecord(uuid: string, record: any): Promise<boolean> {
@@ -60,7 +108,7 @@
       }
 
       await saveRecord(uuid, record);
-      recordStore.update(local => ({ ...local, [uuid]: record.integrity.hash }));
+      await updateRecordStore(uuid, record.integrity.hash);
       return true;
     } catch (error) {
       console.error(`[SimpleSync] Error processing record ${uuid}:`, error);
@@ -272,18 +320,25 @@
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
       peerTraffic[peerId].recv.roothashs++;
-  
+
       const localHashes = get(recordStore);
-      const localRoot = await buildMerkleTreeNodes(localHashes);
-  
+      const localRoot = await getMerkleTree(localHashes);
+
       if (peerData.rootHash !== localRoot.hash) {
         console.log(`[SimpleSync] Root differs with peer ${peerId}. Starting stateless sync...`);
         
-        // Both peers can initiate sync independently - no conflicts since they only request what they need
-        if (!syncInProgress[peerId]) {
-          console.log(`[SimpleSync] ✅ Starting sync with ${peerId}`);
-          syncInProgress[peerId] = true;
-          
+        // ✅ FIXED: Check sync state atomically before starting
+        if (syncInProgress[peerId]) {
+          console.log(`[SimpleSync] Sync already in progress with ${peerId}`);
+          lastActivity[peerId] = Date.now();
+          return;
+        }
+        
+        // Atomically set sync state
+        syncInProgress[peerId] = true;
+        console.log(`[SimpleSync] ✅ Starting sync with ${peerId}`);
+        
+        try {
           // Request their tree so we can determine what we need from them
           sendSubtree({ requestRoot: true }, peerId);
           
@@ -292,11 +347,12 @@
             console.log(`[SimpleSync] Sync timeout with ${peerId}, resetting state`);
             cleanupPeerSync(peerId);
           }, 10000);
-        } else {
-          console.log(`[SimpleSync] Sync already in progress with ${peerId}`);
+        } catch (error) {
+          console.error(`[SimpleSync] Error starting sync with ${peerId}:`, error);
+          cleanupPeerSync(peerId);
         }
       }
-  
+
       lastActivity[peerId] = Date.now();
     });
   
@@ -308,7 +364,7 @@
         console.log(`[SimpleSync] 📤 Sending tree to ${peerId} for comparison`);
         // Send our full tree for comparison
         const localHashes = get(recordStore);
-        const localRoot = await buildMerkleTreeNodes(localHashes);
+        const localRoot = await getMerkleTree(localHashes);
         sendSubtree({ tree: localRoot }, peerId);
         peerTraffic[peerId].sent.subtrees++;
         return;
@@ -317,7 +373,7 @@
       if (request.tree) {
         // This is a tree comparison - find what we need from them (stateless)
         const localHashes = get(recordStore);
-        const localRoot = await buildMerkleTreeNodes(localHashes);
+        const localRoot = await getMerkleTree(localHashes);
         
         // Debug: Log what we have vs what they have
         console.log(`[SimpleSync] 🔍 Comparing trees with ${peerId}:`);
@@ -326,8 +382,8 @@
         
         // Find what we're missing from them (simple set difference)
         const ourRecords = new Set(Object.keys(localHashes));
-        const theirRecords = new Set(request.tree.uuids);
-        const weNeed = [...theirRecords].filter(uuid => !ourRecords.has(uuid));
+        const theirRecords = new Set(request.tree.uuids as string[]);
+        const weNeed = [...theirRecords].filter((uuid: string) => !ourRecords.has(uuid));
         
         // Request what we need from them
         if (weNeed.length > 0) {
@@ -361,35 +417,44 @@
       lastActivity[peerId] = Date.now();
     });
   
-    // Receive records from peer (unchanged)
+    // Receive records from peer (per-peer processing)
     getRecords(async (records: Record<string, any>, peerId) => {
-      if (processingRecords) return;
-      processingRecords = true;
+      // ✅ FIXED: Check per-peer processing state
+      if (processingRecords[peerId]) {
+        console.log(`[SimpleSync] Already processing records from ${peerId}, skipping`);
+        return;
+      }
+      
+      processingRecords[peerId] = true;
       initPeer(peerId);
 
-      const incomingCount = Object.keys(records).length;
-      console.log(`[SimpleSync] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
-      statReceivedRecords += incomingCount;
-      peerTraffic[peerId].recv.records += incomingCount;
-  
-      let processedCount = 0;
-      for (const [uuid, record] of Object.entries(records)) {
-        if (await processRecord(uuid, record)) processedCount++;
-      }
-  
-      console.log(`[SimpleSync] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
-  
-      // Update Merkle root
-      const hashes = get(recordStore);
-      const root = await buildMerkleTreeNodes(hashes);
-      merkleRoot.set(root.hash);
+      try {
+        const incomingCount = Object.keys(records).length;
+        console.log(`[SimpleSync] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
+        statReceivedRecords += incomingCount;
+        peerTraffic[peerId].recv.records += incomingCount;
+    
+        let processedCount = 0;
+        for (const [uuid, record] of Object.entries(records)) {
+          if (await processRecord(uuid, record)) processedCount++;
+        }
+    
+        console.log(`[SimpleSync] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
+    
+        // Update Merkle root using cached version
+        const hashes = get(recordStore);
+        const root = await getMerkleTree(hashes);
+        merkleRoot.set(root.hash);
 
-      // Don't update lastActivity here to prevent immediate re-sync
-      //       lastActivity[peerId] = Date.now();
-      processingRecords = false;
-      
-      // Mark sync as complete for this peer
-      cleanupPeerSync(peerId);
+        // Don't update lastActivity here to prevent immediate re-sync
+        //       lastActivity[peerId] = Date.now();
+        
+        // Mark sync as complete for this peer
+        cleanupPeerSync(peerId);
+      } catch (error) {
+        console.error(`[SimpleSync] Error processing records from ${peerId}:`, error);
+        cleanupPeerSync(peerId);
+      }
     });
   
     // ✅ Fixed: Periodic sync with just root hash
@@ -399,7 +464,7 @@
         if (now - lastActivity[peerId] > IDLE_TIMEOUT) {
           console.log(`[SimpleSync] Peer ${peerId} idle, sending root hash`);
           const hashes = get(recordStore);
-          const root = await buildMerkleTreeNodes(hashes);
+          const root = await getMerkleTree(hashes);
           sendRootHash({ rootHash: root.hash }, peerId);
           peerTraffic[peerId].sent.roothashs++;
         }
