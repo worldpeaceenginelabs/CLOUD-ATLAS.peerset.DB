@@ -20,18 +20,6 @@ export const saveRecord = async (uuid, record) => {
   await db.put('records', recordWithUuid);
 };
 
-// Save multiple records - takes a records object with uuid keys
-export const saveRecords = async (records) => {
-  const db = await initDB();
-  const tx = db.transaction('records', 'readwrite');
-  for (let uuid in records) {
-    // Ensure each record has the uuid field
-    const recordWithUuid = { ...records[uuid], uuid };
-    await tx.store.put(recordWithUuid);
-  }
-  await tx.done;
-};
-
 // Get all records and return as object with uuid keys (matching your app's expected format)
 export const getAllRecords = async () => {
   const db = await initDB();
