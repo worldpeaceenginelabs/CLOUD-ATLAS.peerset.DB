@@ -24,8 +24,8 @@
   const IDLE_TIMEOUT = 1000 * 60 * 5; // Increased from 5000 to 10000ms
   
   // --- P2P ---
-  const config = { appId: 'simpleSync' };
-  const room = joinRoom(config, 'simpleRoom');
+  const config = { appId: 'peerset.DB' };
+  const room = joinRoom(config, 'sdfjow02039ru');
   
   let sendRootHash, getRootHash, sendRecords, getRecords, sendSubtree, getSubtree;
   let processingRecords: Record<string, boolean> = {}; // Track record processing per peer
@@ -292,12 +292,12 @@
   
     const localMerkleRoot = await buildMerkleTreeNodes(hashMap);
     merkleRoot.set(localMerkleRoot.hash);
-    console.log(`[SimpleSync] Loaded ${Object.keys(hashMap).length} persisted records`);
-    console.log(`[SimpleSync] My peer ID: ${selfId}`);
+    console.log(`[peerset.DB] Loaded ${Object.keys(hashMap).length} persisted records`);
+    console.log(`[peerset.DB] My peer ID: ${selfId}`);
   
     // Peer joins
     room.onPeerJoin(peerId => {
-      console.log(`[SimpleSync] Peer ${peerId} joined`);
+      console.log(`[peerset.DB] Peer ${peerId} joined`);
       initPeer(peerId);
       // ✅ Send only root hash first, not full tree
       sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
@@ -307,7 +307,7 @@
   
     // Peer leaves
     room.onPeerLeave(peerId => {
-      console.log(`[SimpleSync] Peer ${peerId} left`);
+      console.log(`[peerset.DB] Peer ${peerId} left`);
       delete peerTraffic[peerId];
       delete lastActivity[peerId];
       cleanupPeerSync(peerId); // Clean up sync state
@@ -330,18 +330,18 @@
       const localMerkleRoot = await getMerkleTree(localHashes);
 
       if (peerData.merkleRoot !== localMerkleRoot.hash) {
-        console.log(`[SimpleSync] Root differs with peer ${peerId}. Starting stateless sync...`);
+        console.log(`[peerset.DB] Root differs with peer ${peerId}. Starting stateless sync...`);
         
         // ✅ FIXED: Check sync state atomically before starting
         if (syncInProgress[peerId]) {
-          console.log(`[SimpleSync] Sync already in progress with ${peerId}`);
+          console.log(`[peerset.DB] Sync already in progress with ${peerId}`);
           lastActivity[peerId] = Date.now();
           return;
         }
         
         // Atomically set sync state
         syncInProgress[peerId] = true;
-        console.log(`[SimpleSync] ✅ Starting sync with ${peerId}`);
+        console.log(`[peerset.DB] ✅ Starting sync with ${peerId}`);
         
         try {
           // Request their tree so we can determine what we need from them
@@ -349,11 +349,11 @@
           
           // Reset sync state after timeout
           syncTimeouts[peerId] = setTimeout(() => {
-            console.log(`[SimpleSync] Sync timeout with ${peerId}, resetting state`);
+            console.log(`[peerset.DB] Sync timeout with ${peerId}, resetting state`);
             cleanupPeerSync(peerId);
           }, 10000);
         } catch (error) {
-          console.error(`[SimpleSync] Error starting sync with ${peerId}:`, error);
+          console.error(`[peerset.DB] Error starting sync with ${peerId}:`, error);
           cleanupPeerSync(peerId);
         }
       }
@@ -366,7 +366,7 @@
       initPeer(peerId);
       
       if (request.requestRoot) {
-        console.log(`[SimpleSync] 📤 Sending tree to ${peerId} for comparison`);
+        console.log(`[peerset.DB] 📤 Sending tree to ${peerId} for comparison`);
         // Send our full tree for comparison
         const localHashes = get(hashMapStore);
         const localMerkleRoot = await getMerkleTree(localHashes);
@@ -381,9 +381,9 @@
         const localMerkleRoot = await getMerkleTree(localHashes);
         
         // Debug: Log what we have vs what they have
-        console.log(`[SimpleSync] 🔍 Comparing trees with ${peerId}:`);
-        console.log(`[SimpleSync] Our records:`, Object.keys(localHashes).sort());
-        console.log(`[SimpleSync] Their records:`, request.tree.uuids.sort());
+        console.log(`[peerset.DB] 🔍 Comparing trees with ${peerId}:`);
+        console.log(`[peerset.DB] Our records:`, Object.keys(localHashes).sort());
+        console.log(`[peerset.DB] Their records:`, request.tree.uuids.sort());
         
         // Find what we're missing from them (simple set difference)
         const ourRecords = new Set(Object.keys(localHashes));
@@ -392,12 +392,12 @@
         
         // Request what we need from them
         if (weNeed.length > 0) {
-          console.log(`[SimpleSync] 🔍 Requesting ${weNeed.length} records from ${peerId}:`, weNeed);
+          console.log(`[peerset.DB] 🔍 Requesting ${weNeed.length} records from ${peerId}:`, weNeed);
           sendSubtree({ requestUUIDs: weNeed }, peerId);
           peerTraffic[peerId].sent.subtrees++;
           statSubtreesExchanged++;
         } else {
-          console.log(`[SimpleSync] ✅ No records needed from ${peerId}`);
+          console.log(`[peerset.DB] ✅ No records needed from ${peerId}`);
         }
       }
       
@@ -412,7 +412,7 @@
         }
         
         if (Object.keys(toSend).length > 0) {
-          console.log(`[SimpleSync] 📤 Sending ${Object.keys(toSend).length} records to ${peerId}:`, Object.keys(toSend));
+          console.log(`[peerset.DB] 📤 Sending ${Object.keys(toSend).length} records to ${peerId}:`, Object.keys(toSend));
           sendRecords(toSend, peerId);
           statRecordsSent += Object.keys(toSend).length;
           peerTraffic[peerId].sent.records += Object.keys(toSend).length;
@@ -426,7 +426,7 @@
     getRecords(async (records: Record<string, any>, peerId) => {
       // ✅ FIXED: Check per-peer processing state
       if (processingRecords[peerId]) {
-        console.log(`[SimpleSync] Already processing records from ${peerId}, skipping`);
+        console.log(`[peerset.DB] Already processing records from ${peerId}, skipping`);
         return;
       }
       
@@ -435,7 +435,7 @@
 
       try {
         const incomingCount = Object.keys(records).length;
-        console.log(`[SimpleSync] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
+        console.log(`[peerset.DB] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
         statReceivedRecords += incomingCount;
         peerTraffic[peerId].recv.records += incomingCount;
     
@@ -444,7 +444,7 @@
           try {
             const approved = await moderateRecord(record);
             if (!approved) {
-              console.log(`[SimpleSync] Record ${uuid} rejected by moderation`);
+              console.log(`[peerset.DB] Record ${uuid} rejected by moderation`);
               continue;
             }
 
@@ -452,11 +452,11 @@
             await updateHashMapStore(uuid, record.integrity.hash);
             processedCount++;
           } catch (error) {
-            console.error(`[SimpleSync] Error processing record ${uuid}:`, error);
+            console.error(`[peerset.DB] Error processing record ${uuid}:`, error);
           }
         }
     
-        console.log(`[SimpleSync] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
+        console.log(`[peerset.DB] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
     
         // Update Merkle root using cached version
         const hashes = get(hashMapStore);
@@ -469,25 +469,11 @@
         // Mark sync as complete for this peer
         cleanupPeerSync(peerId);
       } catch (error) {
-        console.error(`[SimpleSync] Error processing records from ${peerId}:`, error);
+        console.error(`[peerset.DB] Error processing records from ${peerId}:`, error);
         cleanupPeerSync(peerId);
       }
     });
   
-    // ✅ Fixed: Periodic sync with just root hash
-    setInterval(async () => {
-      const now = Date.now();
-      for (const peerId in lastActivity) {
-        if (now - lastActivity[peerId] > IDLE_TIMEOUT) {
-          console.log(`[SimpleSync] Peer ${peerId} idle, sending root hash`);
-          const hashes = get(hashMapStore);
-          const localMerkleRoot = await getMerkleTree(hashes);
-          sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
-          peerTraffic[peerId].sent.rootHashes++;
-          statRootHashesSent++;
-        }
-      }
-    }, 1000);
   });
   </script>
   
