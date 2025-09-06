@@ -1,12 +1,16 @@
 <script lang="ts">
-  import { merkleRoot } from './stores';
-  import { getAllRecords } from './db';
-  import { onMount } from 'svelte';
+  import { merkleRoot, hashMapStore } from './stores';
+  import { getAllRecords, saveRecord } from './db';
+  import { onMount, createEventDispatcher } from 'svelte';
+  
+  const dispatch = createEventDispatcher();
 
   // --- UI sync stats ---
   export let statReceivedRecords = 0;
   export let statSubtreesExchanged = 0;
   export let statRecordsSent = 0;
+  export let statRootHashesSent = 0;
+  export let statRootHashesReceived = 0;
   export let peerTraffic: Record<
     string,
     {
@@ -26,10 +30,104 @@
   let currentPage = 1;
   let expanded: Record<string, boolean> = {};
 
+  // Generate records state
+  let generateCount = 1;
+  let isGenerating = false;
+
   // Load full records from IndexedDB when component mounts
   onMount(async () => {
     fullRecords = await getAllRecords();
   });
+
+  // Function to refresh records from IndexedDB
+  async function refreshRecords() {
+    fullRecords = await getAllRecords();
+  }
+
+  // Function to reset all stats
+  function resetStats() {
+    dispatch('resetStats');
+  }
+
+  // --- Random helpers for record generation ---
+  const randomString = (len = 8) =>
+    Array.from(crypto.getRandomValues(new Uint8Array(len)))
+      .map((x) => (x % 36).toString(36))
+      .join("");
+
+  const randomNumber = (min, max) =>
+    Math.random() * (max - min) + min;
+
+  // --- Hash function ---
+  async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Function to generate records
+  async function generateRecords() {
+    if (isGenerating) return; // Prevent multiple simultaneous generations
+    
+    isGenerating = true;
+    try {
+      for (let i = 0; i < generateCount; i++) {
+        const record = {
+          uuid: crypto.randomUUID(), // used as IndexedDB key
+          created_at: Date.now(),
+          bucket: randomString(6),
+          author: {
+            npub: "npub_" + randomString(16)
+          },
+          content: {
+            text: "Random content " + randomString(6),
+            link: "https://example.com/" + randomString(4)
+          },
+          geo: {
+            latitude: randomNumber(-90, 90),
+            longitude: randomNumber(-180, 180)
+          },
+          integrity: {
+            hash: "",
+            signature: "sig_" + randomString(32)
+          }
+        };
+
+        // build hash from all data except integrity
+        const hashInput = JSON.stringify({
+          uuid: record.uuid,
+          created_at: record.created_at,
+          bucket: record.bucket,
+          author: record.author,
+          content: record.content,
+          geo: record.geo
+        });
+
+        record.integrity.hash = await sha256(hashInput);
+
+        await saveRecord(record.uuid, record);
+      }
+      alert(`${generateCount} records generated and saved!`);
+      // Refresh records to show the new ones
+      await refreshRecords();
+    } finally {
+      isGenerating = false;
+    }
+  }
+
+  // Handle Enter key press for generate button
+  function handleKeyPress(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      generateRecords();
+    }
+  }
+
+  // Reactive statement to refresh records when hashMapStore changes
+  $: if ($hashMapStore) {
+    refreshRecords();
+  }
 
   // Derive paged records from fullRecords
   $: pagedRecords = (() => {
@@ -53,24 +151,60 @@
   <div style="margin:0; padding:0; width: 100%; height: 100%;">
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
       <h3 style="margin: 0 0 8px;">Sync Stats</h3>
+      <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+        <button on:click={refreshRecords} style="padding: 6px 12px; border: 1px solid #007bff; border-radius: 4px; background: #007bff; color: white; cursor: pointer;">
+          Refresh Records
+        </button>
+        <button on:click={resetStats} style="padding: 6px 12px; border: 1px solid #dc3545; border-radius: 4px; background: #dc3545; color: white; cursor: pointer;">
+          Reset Stats
+        </button>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <label for="generateCount" style="font-size: 14px;">Records:</label>
+          <input
+            id="generateCount"
+            type="number"
+            bind:value={generateCount}
+            min="1"
+            max="100"
+            disabled={isGenerating}
+            on:keypress={handleKeyPress}
+            style="width: 60px; padding: 4px 6px; border: 1px solid {isGenerating ? '#dee2e6' : '#ccc'}; border-radius: 4px; font-size: 14px; background-color: {isGenerating ? '#f8f9fa' : 'white'}; color: {isGenerating ? '#6c757d' : '#000'};"
+          />
+          <button 
+            on:click={generateRecords} 
+            disabled={isGenerating}
+            style="padding: 6px 12px; border: 1px solid {isGenerating ? '#6c757d' : '#28a745'}; border-radius: 4px; background: {isGenerating ? '#6c757d' : '#28a745'}; color: white; cursor: {isGenerating ? 'not-allowed' : 'pointer'}; font-size: 14px;"
+          >
+            {isGenerating ? 'Generating...' : 'Generate'}
+          </button>
+        </div>
+      </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 8px;">
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 8px;">
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
         Peers online: <strong>{peersOnline}</strong>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+        Total records: <strong>{Object.keys(fullRecords || {}).length}</strong>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+        Root hash: <strong>{$merkleRoot.substring(0, 9)}</strong> 
       </div>
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
         Records received: <strong>{statReceivedRecords}</strong>
       </div>
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+        Records sent: <strong>{statRecordsSent}</strong>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
         Subtrees exchanged: <strong>{statSubtreesExchanged}</strong>
       </div>
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
-        Records sent: <strong>{statRecordsSent}</strong>
+        Root hashes sent: <strong>{statRootHashesSent}</strong>
       </div>
-      
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: 1 / -1;">
-        Root hash: <strong>{$merkleRoot.substring(0, 9)}</strong> 
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;background-color:green; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+        Root hashes received: <strong>{statRootHashesReceived}</strong>
       </div>
     </div>
   

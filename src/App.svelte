@@ -9,12 +9,13 @@
   
   // --- Stores ---
   import { hashMapStore, merkleRoot } from './stores';
-  import RecordGenerator from './RecordGenerator.svelte';
   
   // --- Stats ---
   let statRecordsSent = 0;
   let statReceivedRecords = 0;
   let statSubtreesExchanged = 0;
+  let statRootHashesSent = 0;
+  let statRootHashesReceived = 0;
   let peerTraffic: Record<string, { 
     sent: { rootHashes: number; subtrees: number; records: number }; 
     recv: { rootHashes: number; subtrees: number; records: number } 
@@ -54,6 +55,24 @@
     }
     delete syncInProgress[peerId];
     delete processingRecords[peerId];
+  }
+
+  // Handle reset stats event from UI component
+  function handleResetStats() {
+    statReceivedRecords = 0;
+    statSubtreesExchanged = 0;
+    statRecordsSent = 0;
+    statRootHashesSent = 0;
+    statRootHashesReceived = 0;
+    // Reset peer traffic
+    for (const peerId in peerTraffic) {
+      peerTraffic[peerId] = { 
+        sent: { rootHashes: 0, subtrees: 0, records: 0 }, 
+        recv: { rootHashes: 0, subtrees: 0, records: 0 } 
+      };
+    }
+    // Trigger reactivity
+    peerTraffic = { ...peerTraffic };
   }
 
   // Get cached Merkle tree or build new one
@@ -299,6 +318,7 @@
       // ✅ Send only root hash first, not full tree
       sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
       peerTraffic[peerId].sent.rootHashes++;
+      statRootHashesSent++;
     });
   
     // Peer leaves
@@ -320,6 +340,7 @@
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
       peerTraffic[peerId].recv.rootHashes++;
+      statRootHashesReceived++;
 
       const localHashes = get(hashMapStore);
       const localMerkleRoot = await getMerkleTree(localHashes);
@@ -467,6 +488,7 @@
           const localMerkleRoot = await getMerkleTree(hashes);
           sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
           peerTraffic[peerId].sent.rootHashes++;
+          statRootHashesSent++;
         }
       }
     }, 1000);
@@ -484,8 +506,10 @@
       {statReceivedRecords}
       {statSubtreesExchanged}
       {statRecordsSent}
+      {statRootHashesSent}
+      {statRootHashesReceived}
       {peerTraffic}
+      on:resetStats={handleResetStats}
     />
-  
-    <RecordGenerator />
+
   </main>
