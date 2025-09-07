@@ -238,16 +238,17 @@
         <!-- Record generation section -->
         <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
           <div style="font-size: 14px; font-weight: bold; text-align: center;">Generate Records</div>
-          <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
-            <button on:click={() => generateCount = 1} class:selected={generateCount === 1} style="padding: 6px 10px; border: 1px solid {generateCount === 1 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 1 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 1 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">1</button>
-            <button on:click={() => generateCount = 5} class:selected={generateCount === 5} style="padding: 6px 10px; border: 1px solid {generateCount === 5 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 5 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 5 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">5</button>
-            <button on:click={() => generateCount = 10} class:selected={generateCount === 10} style="padding: 6px 10px; border: 1px solid {generateCount === 10 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 10 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 10 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">10</button>
-            <button on:click={() => generateCount = 20} class:selected={generateCount === 20} style="padding: 6px 10px; border: 1px solid {generateCount === 20 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 20 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 20 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">20</button>
-            <button on:click={() => generateCount = 50} class:selected={generateCount === 50} style="padding: 6px 10px; border: 1px solid {generateCount === 50 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 50 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 50 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">50</button>
-            <button on:click={() => generateCount = 100} class:selected={generateCount === 100} style="padding: 6px 10px; border: 1px solid {generateCount === 100 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 100 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 100 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">100</button>
-            <button on:click={() => generateCount = 500} class:selected={generateCount === 500} style="padding: 6px 10px; border: 1px solid {generateCount === 500 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 500 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 500 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">500</button>
-            <button on:click={() => generateCount = 1000} class:selected={generateCount === 1000} style="padding: 6px 10px; border: 1px solid {generateCount === 1000 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 1000 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 1000 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">1000</button>
-            <button on:click={() => generateCount = 10000} class:selected={generateCount === 10000} style="padding: 6px 10px; border: 1px solid {generateCount === 10000 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 10000 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 10000 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">10000</button>
+          <div style="display: flex; justify-content: center; align-items: center; gap: 8px;">
+            <label for="generateCountInput" style="font-size: 14px;">Count:</label>
+            <input 
+              id="generateCountInput" 
+              type="number" 
+              min="1" 
+              max="100000" 
+              step="1" 
+              bind:value={generateCount} 
+              style="width: 120px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; text-align: center;"
+            />
           </div>
           <button 
             on:click={generateRecords} 

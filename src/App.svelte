@@ -461,13 +461,6 @@
   
     // Receive records from peer (per-peer processing with batching)
     getRecords(async (records: Record<string, any>, peerId) => {
-      // ✅ IMPROVED: Allow concurrent processing for different batch sizes
-      const batchSize = Object.keys(records).length;
-      if (processingRecords[peerId] && batchSize < 10) {
-        console.log(`[peerset.DB] Already processing records from ${peerId}, skipping small batch (${batchSize})`);
-        return;
-      }
-      
       processingRecords[peerId] = true;
       initPeer(peerId);
 
