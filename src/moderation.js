@@ -3,11 +3,6 @@
  * @param {any} record - The record to moderate.
  * @returns {Promise<boolean>} - True if the record passes moderation, false otherwise.
  */
-export async function moderateRecord(record) {
-  // Temporarily bypass moderation for testing
-  // console.log('Moderation bypassed for testing: Allowing all records');
-  return true;
-}
 
 /**
  * Moderates multiple records in batch for better performance.

@@ -22,13 +22,6 @@ export async function sha256(msg: string | Uint8Array): Promise<string> {
     .join('');
 }
 
-
-
-export async function sha256msg (msg: Uint8Array): Promise<Uint8Array> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msg);
-  return new Uint8Array(hashBuffer);
-}
-
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
 }
@@ -124,37 +117,4 @@ export function decodeBech32Key(bech32Str: string): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-}
-
-/**
- * Compute a deterministic hash for a bucket
- * @param {string[]} uuids - UUIDs in this bucket
- * @param {Object} records - optional: full record map keyed by UUID
- * @returns {Promise<string>} hex hash string
- */
-export async function computeBucketHash(uuids = [], records = {}) {
-  // sort UUIDs to ensure deterministic order
-  const sortedUUIDs = uuids.slice().sort();
-
-  // stable stringify: recursively sort object keys
-  const stableStringify = (value: any): string => {
-    if (value === null || typeof value !== 'object') return JSON.stringify(value);
-    if (Array.isArray(value)) return '[' + value.map(v => stableStringify(v)).join(',') + ']';
-    const keys = Object.keys(value).sort();
-    return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
-  };
-
-  // combine UUIDs + optional record data
-  const combinedStr = sortedUUIDs.map(uuid => {
-    const record = (records as any)[uuid];
-    return record ? stableStringify(record) : uuid;
-  }).join('|');
-
-  // convert string to Uint8Array
-  const encoder = new TextEncoder();
-  const combinedBytes = encoder.encode(combinedStr);
-
-  // hash using secp256k1 sha256
-  const hashBytes = await sha256(combinedBytes);
-  return bytesToHex(hashBytes);
 }
