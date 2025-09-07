@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { joinRoom, selfId } from 'trystero/torrent';
   import { get } from 'svelte/store';
-  import { getAllRecords, saveRecord, saveRecordsBatch } from './db.js';
+  import { getAllRecords, saveRecordsBatch } from './db.js';
   import { sha256 } from './secp256k1.js';
   import { moderateRecord, moderateRecordsBatch } from './moderation.js';
   import Ui from './UI.svelte';

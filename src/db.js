@@ -12,12 +12,6 @@ export const initDB = async () => {
   return db;
 };
 
-// Save a single record - takes uuid and record separately
-export const saveRecord = async (uuid, record) => {
-  const db = await initDB();
-  await db.put('records', record);
-};
-
 // Save multiple records in batch for better performance
 export const saveRecordsBatch = async (records) => {
   const db = await initDB();

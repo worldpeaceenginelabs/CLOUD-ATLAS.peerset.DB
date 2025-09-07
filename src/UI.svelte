@@ -1,6 +1,6 @@
 <script lang="ts">
   import { merkleRoot, hashMapStore } from './stores';
-  import { getAllRecords, saveRecord, saveRecordsBatch } from './db';
+  import { getAllRecords, saveRecordsBatch } from './db';
   import { onMount, createEventDispatcher } from 'svelte';
   
   const dispatch = createEventDispatcher();
