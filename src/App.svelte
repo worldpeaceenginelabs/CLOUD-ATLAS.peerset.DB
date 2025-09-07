@@ -151,6 +151,34 @@
     peerTraffic = { ...peerTraffic };
   }
 
+  // Handle manual send roothash event from UI component
+  async function handleSendRootHash() {
+    const localHashes = get(hashMapStore);
+    const localMerkleRoot = await getMerkleTree(localHashes);
+    
+    // Send root hash to all connected peers
+    const connectedPeers = Object.keys(peerTraffic);
+    if (connectedPeers.length === 0) {
+      console.log('[peerset.DB] No peers connected to send root hash to');
+      return;
+    }
+    
+    console.log(`[peerset.DB] Manually sending root hash to ${connectedPeers.length} peer(s)`);
+    
+    for (const peerId of connectedPeers) {
+      try {
+        sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
+        peerTraffic[peerId].sent.rootHashes++;
+        statRootHashesSent++;
+      } catch (error) {
+        console.error(`[peerset.DB] Error sending root hash to peer ${peerId}:`, error);
+      }
+    }
+    
+    // Trigger reactivity
+    peerTraffic = { ...peerTraffic };
+  }
+
   // ✅ FIXED: Thread-safe hash map store update
   async function updateHashMapStore(uuid: string, hash: string): Promise<void> {
     hashMapStoreUpdateQueue.push({ uuid, hash });
@@ -417,6 +445,7 @@
       {statRootHashesReceived}
       {peerTraffic}
       on:resetStats={handleResetStats}
+      on:sendRootHash={handleSendRootHash}
     />
 
   </main>

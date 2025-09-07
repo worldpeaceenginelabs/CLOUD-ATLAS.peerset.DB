@@ -49,6 +49,11 @@
     dispatch('resetStats');
   }
 
+  // Function to manually send root hash
+  function sendRootHash() {
+    dispatch('sendRootHash');
+  }
+
   // --- Random helpers for record generation ---
   const randomString = (len = 8) =>
     Array.from(crypto.getRandomValues(new Uint8Array(len)))
@@ -173,6 +178,9 @@
         </button>
         <button on:click={resetStats} style="padding: 6px 12px; border: 1px solid #dc3545; border-radius: 4px; background: #dc3545; color: white; cursor: pointer;">
           Reset Stats
+        </button>
+        <button on:click={sendRootHash} style="padding: 6px 12px; border: 1px solid #6f42c1; border-radius: 4px; background: #6f42c1; color: white; cursor: pointer;">
+          Send Root Hash
         </button>
         <div style="display: flex; gap: 4px; align-items: center;">
           <label for="generateCount" style="font-size: 14px;">Records:</label>
