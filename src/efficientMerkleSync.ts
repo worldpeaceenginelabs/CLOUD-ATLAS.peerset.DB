@@ -1,4 +1,4 @@
-import { getMerkleTree, findWhatWeNeed, findWhatRemoteNeeds, type MerkleNode } from './merkleTree.js';
+import { getMerkleTree, type MerkleNode } from './merkleTree.js';
 
 // --- Efficient Merkle Sync Protocol ---
 

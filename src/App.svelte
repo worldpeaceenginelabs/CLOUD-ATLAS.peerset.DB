@@ -3,9 +3,8 @@
   import { joinRoom, selfId } from 'trystero/torrent';
   import { get } from 'svelte/store';
   import { getAllRecords, saveRecordsBatch } from './db.js';
-  import { sha256 } from './secp256k1.js';
-  import { moderateRecord, moderateRecordsBatch } from './moderation.js';
-  import { getMerkleTree, buildMerkleTreeNodes, findWhatRemoteNeeds, findWhatWeNeed, findNeededSubtrees, type MerkleNode } from './merkleTree.js';
+  import { moderateRecordsBatch } from './moderation.js';
+  import { getMerkleTree, buildMerkleTreeNodes, type MerkleNode } from './merkleTree.js';
   import { EfficientMerkleSync, type SubtreeRequest } from './efficientMerkleSync.js';
   import Ui from './UI.svelte';
   
@@ -23,7 +22,6 @@
     recv: { rootHashes: number; subtrees: number; records: number } 
   }> = {};
   const lastActivity: Record<string, number> = {};
-  const IDLE_TIMEOUT = 1000 * 60 * 5; // Increased from 5000 to 10000ms
   
   // --- P2P ---
   const config = { appId: 'peerset.DB' };
