@@ -71,11 +71,8 @@
     // Send root hash to all connected peers
     const connectedPeers = Object.keys(peerTraffic);
     if (connectedPeers.length === 0) {
-      console.log('[peerset.DB] No peers connected to send root hash to');
       return;
     }
-    
-    console.log(`[peerset.DB] Manually sending root hash to ${connectedPeers.length} peer(s)`);
     
     for (const peerId of connectedPeers) {
       try {
@@ -83,7 +80,7 @@
         peerTraffic[peerId].sent.rootHashes++;
         statRootHashesSent++;
       } catch (error) {
-        console.error(`[peerset.DB] Error sending root hash to peer ${peerId}:`, error);
+        // Error handling - could add terminal logging here if needed
       }
     }
     
@@ -230,7 +227,7 @@
   <div style="margin: 0; padding: 0; width: 100%; height: 100%;">
     
     <!-- 1. Data Channel View -->
-    <DataChannelView {peerTraffic} {p2pMessageData} />
+    <DataChannelView {p2pMessageData} />
 
     <!-- 2. Smaller Stats Table -->
     <div class="glass-card" style="display: grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap: 8px; margin: 16px 0; padding: 12px;">

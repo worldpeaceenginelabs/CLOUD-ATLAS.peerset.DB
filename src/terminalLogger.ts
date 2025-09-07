@@ -94,6 +94,13 @@ class TerminalLogger {
   logP2PMessage(type: 'sent' | 'received', channel: 'rootHash' | 'records' | 'subtree', data: any, peerId: string) {
     this.log(type, channel, data, peerId);
   }
+
+  // Log bare input/output data to console only
+  logInputOutput(type: 'input' | 'output', data: any, peerId?: string) {
+    const prefix = peerId ? `[${peerId.substring(0, 8)}] ` : '';
+    const direction = type === 'input' ? '←' : '→';
+    console.log(`${prefix}${direction} ${JSON.stringify(data)}`);
+  }
 }
 
 // Export singleton instance

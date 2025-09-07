@@ -1,4 +1,5 @@
 import { getMerkleTree, type MerkleNode } from './merkleTree.js';
+import { terminalLogger } from './terminalLogger.js';
 
 // --- Efficient Merkle Sync Protocol ---
 
@@ -38,11 +39,11 @@ export class EfficientMerkleSync {
     const localTree = await getMerkleTree(localHashes);
     
     if (localTree.hash === remoteRootHash) {
-      console.log(`[EfficientSync] Trees match with ${peerId}, no sync needed`);
+      terminalLogger.logSync(`Trees match with ${peerId}, no sync needed`, peerId);
       return;
     }
     
-    console.log(`[EfficientSync] Root differs with ${peerId}, requesting top-level subtrees`);
+    terminalLogger.logSync(`Root differs with ${peerId}, requesting top-level subtrees`, peerId);
     
     // Request top-level subtree hashes
     sendSubtree({
@@ -77,7 +78,7 @@ export class EfficientMerkleSync {
     // Extract hashes at requested depth
     const subtreeHashes = this.extractSubtreeHashes(subtree, path, depth);
     
-    console.log(`[EfficientSync] Sending ${subtreeHashes.length} subtree hashes to ${peerId}`);
+    terminalLogger.logSync(`Sending ${subtreeHashes.length} subtree hashes to ${peerId}`, peerId);
     sendSubtree({ subtreeHashes }, peerId);
   }
   
@@ -111,7 +112,7 @@ export class EfficientMerkleSync {
       if (!localSubtree || localSubtree.hash !== remoteSubtree.hash) {
         if (remoteSubtree.hasChildren) {
           // Recurse deeper
-          console.log(`[EfficientSync] Requesting deeper subtrees at ${remoteSubtree.path}`);
+          terminalLogger.logSync(`Requesting deeper subtrees at ${remoteSubtree.path}`, peerId);
           sendSubtree({
             requestSubtreeHashes: {
               path: remoteSubtree.path,
@@ -122,10 +123,10 @@ export class EfficientMerkleSync {
           // Leaf level - only request records that are actually missing locally
           const missingRecords = remoteSubtree.uuids.filter(uuid => !localHashes[uuid]);
           if (missingRecords.length > 0) {
-            console.log(`[EfficientSync] Need ${missingRecords.length} missing records from leaf: ${missingRecords.join(', ')}`);
+            terminalLogger.logSync(`Need ${missingRecords.length} missing records from leaf: ${missingRecords.join(', ')}`, peerId);
             neededRecords.push(...missingRecords);
           } else {
-            console.log(`[EfficientSync] All records from leaf already exist locally, skipping: ${remoteSubtree.uuids.join(', ')}`);
+            terminalLogger.logSync(`All records from leaf already exist locally, skipping: ${remoteSubtree.uuids.join(', ')}`, peerId);
           }
         }
       }
@@ -186,7 +187,7 @@ export class EfficientMerkleSync {
     if (!pending || pending.records.size === 0) return;
     
     const recordsArray = Array.from(pending.records);
-    console.log(`[EfficientSync] Requesting ${recordsArray.length} batched records from ${peerId}`);
+    terminalLogger.logSync(`Requesting ${recordsArray.length} batched records from ${peerId}`, peerId);
     
     pending.sendSubtree({ requestRecords: recordsArray }, peerId);
     
@@ -208,7 +209,7 @@ export class EfficientMerkleSync {
         clearTimeout(pending.timeout);
       }
       delete this.pendingRequests[peerId];
-      console.log(`[EfficientSync] Cleaned up pending batches for ${peerId}`);
+      terminalLogger.logSync(`Cleaned up pending batches for ${peerId}`, peerId);
     }
   }
   
