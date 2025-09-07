@@ -67,12 +67,16 @@
 
   // Handle manual send roothash event
   async function handleSendRootHash() {
+    console.log('handleSendRootHash called');
     // Use the debounced merkle root (newest) instead of recalculating
     const localMerkleRootHash = get(merkleRoot);
+    console.log('Local merkle root hash:', localMerkleRootHash);
     
     // Send root hash to all connected peers
     const connectedPeers = Object.keys(peerTraffic);
+    console.log('Connected peers:', connectedPeers);
     if (connectedPeers.length === 0) {
+      console.log('No connected peers, returning early');
       return;
     }
     
@@ -82,7 +86,9 @@
     
     for (const peerId of connectedPeers) {
       try {
+        console.log(`Sending root hash to peer: ${peerId}`);
         sendRootHashAction({ merkleRoot: localMerkleRootHash }, peerId);
+        console.log(`Successfully sent root hash to peer: ${peerId}`);
         updatedPeerTraffic[peerId] = {
           ...updatedPeerTraffic[peerId],
           sent: {
@@ -97,38 +103,47 @@
     }
     
     // Trigger reactivity by dispatching update event to parent
+    console.log('Dispatching updatePeerTraffic event');
     dispatch('updatePeerTraffic', { 
       peerTraffic: updatedPeerTraffic, 
       statRootHashesSent: updatedStatRootHashesSent 
     });
+    console.log('handleSendRootHash completed');
   }
 
   // Function to manually send root hash (wrapper for button click)
   function sendRootHash() {
     console.log('Send Root Hash button clicked');
+    console.log('sendRootHashAction prop:', sendRootHashAction);
+    if (!sendRootHashAction) {
+      console.error('sendRootHashAction is not defined!');
+      return;
+    }
     handleSendRootHash();
   }
 
   // Function to reset the database (like F5 refresh)
   async function resetDatabase() {
     console.log('Reset Database button clicked');
-      try {
-        // Clear the IndexedDB
-        await clearDatabase();
-        
-        // Reset the stores
-        hashMapStore.set({});
-        merkleRoot.set('');
-        
-        // Clear local state
-        fullRecords = {};
-        
-        
-      } catch (error) {
-        console.error('Error resetting database:', error);
-        alert('Error resetting database: ' + error.message);
-      }
-    
+    try {
+      console.log('Clearing database...');
+      // Clear the IndexedDB
+      await clearDatabase();
+      
+      console.log('Resetting stores...');
+      // Reset the stores
+      hashMapStore.set({});
+      merkleRoot.set('');
+      
+      console.log('Clearing local state...');
+      // Clear local state
+      fullRecords = {};
+      
+      console.log('Database reset completed successfully');
+    } catch (error) {
+      console.error('Error resetting database:', error);
+      alert('Error resetting database: ' + error.message);
+    }
   }
 
   // --- Random helpers for record generation ---
@@ -152,8 +167,12 @@
   // Function to generate records
   async function generateRecords() {
     console.log('Generate Records button clicked');
-    if (isGenerating) return; // Prevent multiple simultaneous generations
+    if (isGenerating) {
+      console.log('Already generating, returning early');
+      return; // Prevent multiple simultaneous generations
+    }
     
+    console.log('Starting record generation...');
     isGenerating = true;
     try {
       const recordsBatch = {};
@@ -210,7 +229,11 @@
       
       
       // Refresh records to show the new ones
+      console.log('Refreshing records...');
       await refreshRecords();
+      console.log('Record generation completed successfully');
+    } catch (error) {
+      console.error('Error during record generation:', error);
     } finally {
       isGenerating = false;
     }

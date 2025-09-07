@@ -99,7 +99,8 @@ class TerminalLogger {
   logInputOutput(type: 'input' | 'output', data: any, peerId?: string) {
     const prefix = peerId ? `[${peerId.substring(0, 8)}] ` : '';
     const direction = type === 'input' ? '←' : '→';
-    console.log(`${prefix}${direction} ${JSON.stringify(data)}`);
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${timestamp}] ${prefix}${direction} ${JSON.stringify(data, null, 2)}`);
   }
 }
 
