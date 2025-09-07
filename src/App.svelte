@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { joinRoom, selfId } from 'trystero/torrent';
   import { get } from 'svelte/store';
-  import { getAllRecords, saveRecord } from './db.js';
+  import { getAllRecords, saveRecord, saveRecordsBatch } from './db.js';
   import { sha256 } from './secp256k1.js';
   import { moderateRecord, moderateRecordsBatch } from './moderation.js';
   import Ui from './UI.svelte';
@@ -449,19 +449,33 @@
         // Batch moderate all records at once
         const moderationResults = await moderateRecordsBatch(records);
         
+        // Filter approved records for batch processing
+        const approvedRecords = {};
+        const approvedHashes = {};
         let processedCount = 0;
+        
         for (const [uuid, record] of Object.entries(records)) {
+          if (!moderationResults[uuid]) {
+            console.log(`[peerset.DB] Record ${uuid} rejected by moderation`);
+            continue;
+          }
+          approvedRecords[uuid] = record;
+          approvedHashes[uuid] = record.integrity.hash;
+          processedCount++;
+        }
+        
+        // Batch save all approved records
+        if (Object.keys(approvedRecords).length > 0) {
           try {
-            if (!moderationResults[uuid]) {
-              console.log(`[peerset.DB] Record ${uuid} rejected by moderation`);
-              continue;
-            }
-
-            await saveRecord(uuid, record);
-            await updateHashMapStore(uuid, record.integrity.hash);
-            processedCount++;
+            await saveRecordsBatch(approvedRecords);
+            
+            // Batch update hash map store
+            hashMapStore.update(local => ({
+              ...local,
+              ...approvedHashes
+            }));
           } catch (error) {
-            console.error(`[peerset.DB] Error processing record ${uuid}:`, error);
+            console.error(`[peerset.DB] Error batch processing records from ${peerId}:`, error);
           }
         }
     

@@ -18,6 +18,22 @@ export const saveRecord = async (uuid, record) => {
   await db.put('records', record);
 };
 
+// Save multiple records in batch for better performance
+export const saveRecordsBatch = async (records) => {
+  const db = await initDB();
+  const tx = db.transaction('records', 'readwrite');
+  const store = tx.objectStore('records');
+  
+  // Queue all put operations
+  const promises = [];
+  for (const [uuid, record] of Object.entries(records)) {
+    promises.push(store.put(record));
+  }
+  
+  // Wait for all operations and transaction to complete
+  await Promise.all([...promises, tx.done]);
+};
+
 // Get all records and return as object with uuid keys (matching your app's expected format)
 export const getAllRecords = async () => {
   const db = await initDB();

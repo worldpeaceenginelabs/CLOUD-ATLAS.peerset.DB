@@ -1,6 +1,6 @@
 <script lang="ts">
   import { merkleRoot, hashMapStore } from './stores';
-  import { getAllRecords, saveRecord } from './db';
+  import { getAllRecords, saveRecord, saveRecordsBatch } from './db';
   import { onMount, createEventDispatcher } from 'svelte';
   
   const dispatch = createEventDispatcher();
@@ -73,6 +73,10 @@
     
     isGenerating = true;
     try {
+      const recordsBatch = {};
+      const hashUpdates = {};
+      
+      // Generate all records first
       for (let i = 0; i < generateCount; i++) {
         const record = {
           uuid: crypto.randomUUID(), // used as IndexedDB key
@@ -106,9 +110,21 @@
         });
 
         record.integrity.hash = await sha256(hashInput);
-
-        await saveRecord(record.uuid, record);
+        
+        // Add to batch
+        recordsBatch[record.uuid] = record;
+        hashUpdates[record.uuid] = record.integrity.hash;
       }
+      
+      // Batch save all records
+      await saveRecordsBatch(recordsBatch);
+      
+      // Batch update hash map store
+      hashMapStore.update(local => ({
+        ...local,
+        ...hashUpdates
+      }));
+      
       alert(`${generateCount} records generated and saved!`);
       // Refresh records to show the new ones
       await refreshRecords();
