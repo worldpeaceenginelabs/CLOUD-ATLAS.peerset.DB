@@ -33,6 +33,7 @@
   let processingRecords: Record<string, boolean> = {}; // Track record processing per peer
   let syncInProgress: Record<string, boolean> = {}; // Track sync state per peer
   let syncTimeouts: Record<string, NodeJS.Timeout> = {}; // Track sync timeouts for cleanup
+  let syncCompletionChecks: Record<string, NodeJS.Timeout> = {}; // Delayed completion checks
   let hashMapStoreUpdateQueue: Array<{ uuid: string; hash: string }> = [];
   let isUpdatingHashMapStore = false;
   
@@ -116,6 +117,12 @@
     
     // Clean up batch timing history
     delete peerBatchTimings[peerId];
+    
+    // Clean up completion checks
+    if (syncCompletionChecks[peerId]) {
+      clearTimeout(syncCompletionChecks[peerId]);
+      delete syncCompletionChecks[peerId];
+    }
   }
   
   // Extend sync timeout when there's activity (records being processed)
@@ -132,6 +139,32 @@
       
       console.log(`[peerset.DB] Extended sync timeout for ${peerId} due to activity`);
     }
+  }
+  
+  // Check if sync is truly complete after a delay (to allow for pending batches)
+  function scheduleCompletionCheck(peerId: string) {
+    // Clear any existing completion check
+    if (syncCompletionChecks[peerId]) {
+      clearTimeout(syncCompletionChecks[peerId]);
+    }
+    
+    // Schedule completion check after a delay
+    syncCompletionChecks[peerId] = setTimeout(() => {
+      // Check if there are still pending batches
+      const pendingCount = EfficientMerkleSync.getPendingRecordCount(peerId);
+      const hasPending = EfficientMerkleSync.hasPendingBatches(peerId);
+      
+      if (!hasPending && pendingCount === 0 && syncInProgress[peerId]) {
+        console.log(`[peerset.DB] ✅ Sync truly complete for ${peerId} - no more pending batches`);
+        cleanupPeerSync(peerId);
+      } else {
+        console.log(`[peerset.DB] Sync still active for ${peerId} - ${pendingCount} records pending`);
+        // Schedule another check
+        scheduleCompletionCheck(peerId);
+      }
+      
+      delete syncCompletionChecks[peerId];
+    }, 2000); // Wait 2 seconds to see if more batches arrive
   }
 
   // Calculate adaptive delay based on peer's batch timing history
@@ -463,8 +496,8 @@
         // Don't update lastActivity here to prevent immediate re-sync
         //       lastActivity[peerId] = Date.now();
         
-        // Mark sync as complete for this peer
-        cleanupPeerSync(peerId);
+        // Schedule a completion check to see if sync is truly done
+        scheduleCompletionCheck(peerId);
       } catch (error) {
         console.error(`[peerset.DB] Error processing records from ${peerId}:`, error);
         cleanupPeerSync(peerId);

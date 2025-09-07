@@ -1,6 +1,6 @@
 <script lang="ts">
   import { merkleRoot, hashMapStore } from './stores';
-  import { getAllRecords, saveRecordsBatch } from './db';
+  import { getAllRecords, saveRecordsBatch, clearDatabase } from './db';
   import { onMount, createEventDispatcher } from 'svelte';
   import { get } from 'svelte/store';
   import { getMerkleTree } from './merkleTree.js';
@@ -87,6 +87,28 @@
     handleSendRootHash();
   }
 
+  // Function to reset the database (like F5 refresh)
+  async function resetDatabase() {
+    
+      try {
+        // Clear the IndexedDB
+        await clearDatabase();
+        
+        // Reset the stores
+        hashMapStore.set({});
+        merkleRoot.set('');
+        
+        // Clear local state
+        fullRecords = {};
+        
+        
+      } catch (error) {
+        console.error('Error resetting database:', error);
+        alert('Error resetting database: ' + error.message);
+      }
+    
+  }
+
   // --- Random helpers for record generation ---
   const randomString = (len = 8) =>
     Array.from(crypto.getRandomValues(new Uint8Array(len)))
@@ -163,7 +185,7 @@
         ...hashUpdates
       }));
       
-      alert(`${generateCount} records generated and saved!`);
+      
       // Refresh records to show the new ones
       await refreshRecords();
     } finally {
@@ -171,12 +193,6 @@
     }
   }
 
-  // Handle Enter key press for generate button
-  function handleKeyPress(event: KeyboardEvent) {
-    if (event.key === 'Enter') {
-      generateRecords();
-    }
-  }
 
   // Reactive statement to refresh records when hashMapStore changes
   $: if ($hashMapStore) {
@@ -205,34 +221,40 @@
   <div style="margin:0; padding:0; width: 100%; height: 100%;">
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
       <h3 style="margin: 0 0 8px;">Sync Stats</h3>
-      <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
-        <button on:click={refreshRecords} style="padding: 6px 12px; border: 1px solid #007bff; border-radius: 4px; background: #007bff; color: white; cursor: pointer;">
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; width: 100%; max-width: 600px;">
+        <button on:click={refreshRecords} style="width: 100%; padding: 10px 16px; border: 1px solid #007bff; border-radius: 4px; background: #007bff; color: white; cursor: pointer; font-size: 14px;">
           Refresh Records
         </button>
-        <button on:click={resetStats} style="padding: 6px 12px; border: 1px solid #dc3545; border-radius: 4px; background: #dc3545; color: white; cursor: pointer;">
+        <button on:click={resetStats} style="width: 100%; padding: 10px 16px; border: 1px solid #dc3545; border-radius: 4px; background: #dc3545; color: white; cursor: pointer; font-size: 14px;">
           Reset Stats
         </button>
-        <button on:click={sendRootHash} style="padding: 6px 12px; border: 1px solid #6f42c1; border-radius: 4px; background: #6f42c1; color: white; cursor: pointer;">
+        <button on:click={sendRootHash} style="width: 100%; padding: 10px 16px; border: 1px solid #6f42c1; border-radius: 4px; background: #6f42c1; color: white; cursor: pointer; font-size: 14px;">
           Send Root Hash
         </button>
-        <div style="display: flex; gap: 4px; align-items: center;">
-          <label for="generateCount" style="font-size: 14px;">Records:</label>
-          <input
-            id="generateCount"
-            type="number"
-            bind:value={generateCount}
-            min="1"
-            max="100"
-            disabled={isGenerating}
-            on:keypress={handleKeyPress}
-            style="width: 60px; padding: 4px 6px; border: 1px solid {isGenerating ? '#dee2e6' : '#ccc'}; border-radius: 4px; font-size: 14px; background-color: {isGenerating ? '#f8f9fa' : 'white'}; color: {isGenerating ? '#6c757d' : '#000'};"
-          />
+        <button on:click={resetDatabase} style="width: 100%; padding: 10px 16px; border: 1px solid #e74c3c; border-radius: 4px; background: #e74c3c; color: white; cursor: pointer; font-size: 14px;">
+          Reset Database
+        </button>
+        
+        <!-- Record generation section -->
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+          <div style="font-size: 14px; font-weight: bold; text-align: center;">Generate Records</div>
+          <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
+            <button on:click={() => generateCount = 1} class:selected={generateCount === 1} style="padding: 6px 10px; border: 1px solid {generateCount === 1 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 1 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 1 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">1</button>
+            <button on:click={() => generateCount = 5} class:selected={generateCount === 5} style="padding: 6px 10px; border: 1px solid {generateCount === 5 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 5 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 5 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">5</button>
+            <button on:click={() => generateCount = 10} class:selected={generateCount === 10} style="padding: 6px 10px; border: 1px solid {generateCount === 10 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 10 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 10 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">10</button>
+            <button on:click={() => generateCount = 20} class:selected={generateCount === 20} style="padding: 6px 10px; border: 1px solid {generateCount === 20 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 20 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 20 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">20</button>
+            <button on:click={() => generateCount = 50} class:selected={generateCount === 50} style="padding: 6px 10px; border: 1px solid {generateCount === 50 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 50 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 50 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">50</button>
+            <button on:click={() => generateCount = 100} class:selected={generateCount === 100} style="padding: 6px 10px; border: 1px solid {generateCount === 100 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 100 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 100 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">100</button>
+            <button on:click={() => generateCount = 500} class:selected={generateCount === 500} style="padding: 6px 10px; border: 1px solid {generateCount === 500 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 500 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 500 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">500</button>
+            <button on:click={() => generateCount = 1000} class:selected={generateCount === 1000} style="padding: 6px 10px; border: 1px solid {generateCount === 1000 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 1000 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 1000 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">1000</button>
+            <button on:click={() => generateCount = 10000} class:selected={generateCount === 10000} style="padding: 6px 10px; border: 1px solid {generateCount === 10000 ? '#28a745' : '#ccc'}; border-radius: 4px; background: {generateCount === 10000 ? '#28a745' : '#f8f9fa'}; color: {generateCount === 10000 ? 'white' : '#000'}; cursor: pointer; font-size: 12px;">10000</button>
+          </div>
           <button 
             on:click={generateRecords} 
             disabled={isGenerating}
-            style="padding: 6px 12px; border: 1px solid {isGenerating ? '#6c757d' : '#28a745'}; border-radius: 4px; background: {isGenerating ? '#6c757d' : '#28a745'}; color: white; cursor: {isGenerating ? 'not-allowed' : 'pointer'}; font-size: 14px;"
+            style="width: 100%; padding: 10px 16px; border: 1px solid {isGenerating ? '#6c757d' : '#28a745'}; border-radius: 4px; background: {isGenerating ? '#6c757d' : '#28a745'}; color: white; cursor: {isGenerating ? 'not-allowed' : 'pointer'}; font-size: 14px; font-weight: bold;"
           >
-            {isGenerating ? 'Generating...' : 'Generate'}
+            {isGenerating ? 'Generating...' : `Generate ${generateCount} Records`}
           </button>
         </div>
       </div>

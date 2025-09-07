@@ -46,3 +46,12 @@ export const deleteRecord = async (uuid) => {
   const db = await initDB();
   return db.delete('records', uuid);
 };
+
+// Clear all records from the database (like F5 refresh)
+export const clearDatabase = async () => {
+  const db = await initDB();
+  const tx = db.transaction('records', 'readwrite');
+  const store = tx.objectStore('records');
+  await store.clear();
+  await tx.done;
+};

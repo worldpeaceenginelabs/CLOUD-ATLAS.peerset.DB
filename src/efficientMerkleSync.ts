@@ -124,9 +124,14 @@ export class EfficientMerkleSync {
             }
           }, peerId);
         } else {
-          // Leaf level - batch record requests
-          console.log(`[EfficientSync] Need records from leaf: ${remoteSubtree.uuids.join(', ')}`);
-          neededRecords.push(...remoteSubtree.uuids);
+          // Leaf level - only request records that are actually missing locally
+          const missingRecords = remoteSubtree.uuids.filter(uuid => !localHashes[uuid]);
+          if (missingRecords.length > 0) {
+            console.log(`[EfficientSync] Need ${missingRecords.length} missing records from leaf: ${missingRecords.join(', ')}`);
+            neededRecords.push(...missingRecords);
+          } else {
+            console.log(`[EfficientSync] All records from leaf already exist locally, skipping: ${remoteSubtree.uuids.join(', ')}`);
+          }
         }
       }
     }
@@ -210,6 +215,22 @@ export class EfficientMerkleSync {
       delete this.pendingRequests[peerId];
       console.log(`[EfficientSync] Cleaned up pending batches for ${peerId}`);
     }
+  }
+  
+  /**
+   * Check if there are any pending batches for a peer
+   */
+  static hasPendingBatches(peerId: string): boolean {
+    const pending = this.pendingRequests[peerId];
+    return !!(pending && pending.records.size > 0);
+  }
+  
+  /**
+   * Get count of pending records for a peer
+   */
+  static getPendingRecordCount(peerId: string): number {
+    const pending = this.pendingRequests[peerId];
+    return pending ? pending.records.size : 0;
   }
   
   /**
