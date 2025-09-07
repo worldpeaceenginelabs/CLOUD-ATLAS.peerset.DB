@@ -61,6 +61,7 @@
 
   // Function to reset all stats
   function resetStats() {
+    console.log('Reset Stats button clicked');
     dispatch('resetStats');
   }
 
@@ -75,28 +76,42 @@
       return;
     }
     
+    // Create a copy of peerTraffic to modify
+    const updatedPeerTraffic = { ...peerTraffic };
+    let updatedStatRootHashesSent = statRootHashesSent;
+    
     for (const peerId of connectedPeers) {
       try {
         sendRootHashAction({ merkleRoot: localMerkleRootHash }, peerId);
-        peerTraffic[peerId].sent.rootHashes++;
-        statRootHashesSent++;
+        updatedPeerTraffic[peerId] = {
+          ...updatedPeerTraffic[peerId],
+          sent: {
+            ...updatedPeerTraffic[peerId].sent,
+            rootHashes: updatedPeerTraffic[peerId].sent.rootHashes + 1
+          }
+        };
+        updatedStatRootHashesSent++;
       } catch (error) {
-        // Error handling - could add terminal logging here if needed
+        console.error('Error sending root hash to peer:', peerId, error);
       }
     }
     
     // Trigger reactivity by dispatching update event to parent
-    dispatch('updatePeerTraffic', { peerTraffic, statRootHashesSent });
+    dispatch('updatePeerTraffic', { 
+      peerTraffic: updatedPeerTraffic, 
+      statRootHashesSent: updatedStatRootHashesSent 
+    });
   }
 
   // Function to manually send root hash (wrapper for button click)
   function sendRootHash() {
+    console.log('Send Root Hash button clicked');
     handleSendRootHash();
   }
 
   // Function to reset the database (like F5 refresh)
   async function resetDatabase() {
-    
+    console.log('Reset Database button clicked');
       try {
         // Clear the IndexedDB
         await clearDatabase();
@@ -136,6 +151,7 @@
 
   // Function to generate records
   async function generateRecords() {
+    console.log('Generate Records button clicked');
     if (isGenerating) return; // Prevent multiple simultaneous generations
     
     isGenerating = true;
@@ -203,7 +219,9 @@
 
   // Reactive statement to refresh records when hashMapStore changes
   $: if ($hashMapStore) {
-    refreshRecords();
+    refreshRecords().catch(error => {
+      console.error('Error refreshing records:', error);
+    });
   }
 
   // Derive paged records from fullRecords
