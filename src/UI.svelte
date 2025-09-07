@@ -2,6 +2,8 @@
   import { merkleRoot, hashMapStore } from './stores';
   import { getAllRecords, saveRecordsBatch } from './db';
   import { onMount, createEventDispatcher } from 'svelte';
+  import { get } from 'svelte/store';
+  import { getMerkleTree } from './merkleTree.js';
   
   const dispatch = createEventDispatcher();
 
@@ -18,6 +20,9 @@
       recv: { rootHashes: number; subtrees: number; records: number }
     }
   > = {};
+
+  // Additional props needed for handleSendRootHash
+  export let sendRootHashAction: (data: { merkleRoot: string }, peerId: string) => void;
 
   // Derive peers online
   $: peersOnline = Object.keys(peerTraffic || {}).length;
@@ -49,9 +54,37 @@
     dispatch('resetStats');
   }
 
-  // Function to manually send root hash
+  // Handle manual send roothash event
+  async function handleSendRootHash() {
+    const localHashes = get(hashMapStore);
+    const localMerkleRoot = await getMerkleTree(localHashes);
+    
+    // Send root hash to all connected peers
+    const connectedPeers = Object.keys(peerTraffic);
+    if (connectedPeers.length === 0) {
+      console.log('[peerset.DB] No peers connected to send root hash to');
+      return;
+    }
+    
+    console.log(`[peerset.DB] Manually sending root hash to ${connectedPeers.length} peer(s)`);
+    
+    for (const peerId of connectedPeers) {
+      try {
+        sendRootHashAction({ merkleRoot: localMerkleRoot.hash }, peerId);
+        peerTraffic[peerId].sent.rootHashes++;
+        statRootHashesSent++;
+      } catch (error) {
+        console.error(`[peerset.DB] Error sending root hash to peer ${peerId}:`, error);
+      }
+    }
+    
+    // Trigger reactivity by dispatching update event to parent
+    dispatch('updatePeerTraffic', { peerTraffic, statRootHashesSent });
+  }
+
+  // Function to manually send root hash (wrapper for button click)
   function sendRootHash() {
-    dispatch('sendRootHash');
+    handleSendRootHash();
   }
 
   // --- Random helpers for record generation ---

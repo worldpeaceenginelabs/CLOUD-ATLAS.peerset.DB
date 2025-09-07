@@ -6,6 +6,7 @@
   import { sha256 } from './secp256k1.js';
   import { moderateRecord, moderateRecordsBatch } from './moderation.js';
   import { getMerkleTree, buildMerkleTreeNodes, findWhatRemoteNeeds, findWhatWeNeed, findNeededSubtrees, type MerkleNode } from './merkleTree.js';
+  import { EfficientMerkleSync, type SubtreeRequest } from './efficientMerkleSync.js';
   import Ui from './UI.svelte';
   
   // --- Stores ---
@@ -43,6 +44,49 @@
   const BATCH_TIMING_HISTORY = 5; // Keep last 5 batch timings for calculation
   
   // --- Helper Functions ---
+  
+  // Legacy support for old subtree protocol
+  async function handleLegacySubtreeRequest(request: any, peerId: string, localHashes: Record<string, string>) {
+    if (request.requestRoot) {
+      console.log(`[peerset.DB] 📤 Sending tree to ${peerId} for comparison (legacy)`);
+      const localMerkleRoot = await getMerkleTree(localHashes);
+      sendSubtree({ tree: localMerkleRoot }, peerId);
+      peerTraffic[peerId].sent.subtrees++;
+      return;
+    }
+    
+    if (request.tree) {
+      // Simple set difference (legacy behavior)
+      const ourRecords = new Set(Object.keys(localHashes));
+      const theirRecords = new Set(request.tree.uuids as string[]);
+      const weNeed = [...theirRecords].filter((uuid: string) => !ourRecords.has(uuid));
+      
+      if (weNeed.length > 0) {
+        console.log(`[peerset.DB] 🔍 Requesting ${weNeed.length} records from ${peerId} (legacy):`, weNeed);
+        sendSubtree({ requestUUIDs: weNeed }, peerId);
+        peerTraffic[peerId].sent.subtrees++;
+        statSubtreesExchanged++;
+      }
+    }
+    
+    if (request.requestUUIDs) {
+      const fullRecord = await getAllRecords();
+      const toSend: Record<string, any> = {};
+      for (const uuid of request.requestUUIDs) {
+        if (fullRecord[uuid]) {
+          toSend[uuid] = fullRecord[uuid];
+        }
+      }
+      
+      if (Object.keys(toSend).length > 0) {
+        console.log(`[peerset.DB] 📤 Sending ${Object.keys(toSend).length} records to ${peerId} (legacy):`, Object.keys(toSend));
+        sendRecords(toSend, peerId);
+        statRecordsSent += Object.keys(toSend).length;
+        peerTraffic[peerId].sent.records += Object.keys(toSend).length;
+      }
+    }
+  }
+
   function initPeer(peerId: string) {
     if (!peerTraffic[peerId]) {
       peerTraffic[peerId] = { 
@@ -63,6 +107,8 @@
     delete processingRecords[peerId];
     
     // Clean up pending merkle updates for this peer
+    // Clean up pending batches
+    EfficientMerkleSync.cleanupPeerBatches(peerId);
     if (pendingMerkleUpdates[peerId]) {
       clearTimeout(pendingMerkleUpdates[peerId]);
       delete pendingMerkleUpdates[peerId];
@@ -70,6 +116,22 @@
     
     // Clean up batch timing history
     delete peerBatchTimings[peerId];
+  }
+  
+  // Extend sync timeout when there's activity (records being processed)
+  function extendSyncTimeout(peerId: string) {
+    if (syncTimeouts[peerId] && syncInProgress[peerId]) {
+      // Clear existing timeout
+      clearTimeout(syncTimeouts[peerId]);
+      
+      // Set new timeout
+      syncTimeouts[peerId] = setTimeout(() => {
+        console.log(`[peerset.DB] Sync timeout with ${peerId}, resetting state`);
+        cleanupPeerSync(peerId);
+      }, 120000); // 2 minutes from now
+      
+      console.log(`[peerset.DB] Extended sync timeout for ${peerId} due to activity`);
+    }
   }
 
   // Calculate adaptive delay based on peer's batch timing history
@@ -151,32 +213,11 @@
     peerTraffic = { ...peerTraffic };
   }
 
-  // Handle manual send roothash event from UI component
-  async function handleSendRootHash() {
-    const localHashes = get(hashMapStore);
-    const localMerkleRoot = await getMerkleTree(localHashes);
-    
-    // Send root hash to all connected peers
-    const connectedPeers = Object.keys(peerTraffic);
-    if (connectedPeers.length === 0) {
-      console.log('[peerset.DB] No peers connected to send root hash to');
-      return;
-    }
-    
-    console.log(`[peerset.DB] Manually sending root hash to ${connectedPeers.length} peer(s)`);
-    
-    for (const peerId of connectedPeers) {
-      try {
-        sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
-        peerTraffic[peerId].sent.rootHashes++;
-        statRootHashesSent++;
-      } catch (error) {
-        console.error(`[peerset.DB] Error sending root hash to peer ${peerId}:`, error);
-      }
-    }
-    
-    // Trigger reactivity
-    peerTraffic = { ...peerTraffic };
+  // Handle peer traffic updates from UI component
+  function handleUpdatePeerTraffic(event) {
+    const { peerTraffic: updatedPeerTraffic, statRootHashesSent: updatedStatRootHashesSent } = event.detail;
+    peerTraffic = { ...updatedPeerTraffic };
+    statRootHashesSent = updatedStatRootHashesSent;
   }
 
   // ✅ FIXED: Thread-safe hash map store update
@@ -280,14 +321,14 @@
         console.log(`[peerset.DB] ✅ Starting sync with ${peerId}`);
         
         try {
-          // Request their tree so we can determine what we need from them
-          sendSubtree({ requestRoot: true }, peerId);
+          // Use efficient Merkle sync instead of sending full tree
+          await EfficientMerkleSync.startSync(localHashes, peerData.merkleRoot, sendSubtree, peerId);
           
-          // Reset sync state after timeout
+          // Reset sync state after timeout (increased for large datasets)
           syncTimeouts[peerId] = setTimeout(() => {
             console.log(`[peerset.DB] Sync timeout with ${peerId}, resetting state`);
             cleanupPeerSync(peerId);
-          }, 10000);
+          }, 120000); // 2 minutes for large dataset sync
         } catch (error) {
           console.error(`[peerset.DB] Error starting sync with ${peerId}:`, error);
           cleanupPeerSync(peerId);
@@ -297,72 +338,72 @@
       lastActivity[peerId] = Date.now();
     });
   
-    // ✅ Fixed: Handle subtree requests and exchanges
-    getSubtree(async (request, peerId) => {
+    // ✅ Efficient subtree handling using progressive Merkle sync
+    getSubtree(async (request: SubtreeRequest, peerId) => {
       initPeer(peerId);
+      const localHashes = get(hashMapStore);
       
-      if (request.requestRoot) {
-        console.log(`[peerset.DB] 📤 Sending tree to ${peerId} for comparison`);
-        // Send our full tree for comparison
-        const localHashes = get(hashMapStore);
-        const localMerkleRoot = await getMerkleTree(localHashes);
-        sendSubtree({ tree: localMerkleRoot }, peerId);
-        peerTraffic[peerId].sent.subtrees++;
-        return;
-      }
-      
-      if (request.tree) {
-        // This is a tree comparison - find what we need from them (stateless)
-        const localHashes = get(hashMapStore);
-        const localMerkleRoot = await getMerkleTree(localHashes);
-        
-        // Debug: Log what we have vs what they have
-        console.log(`[peerset.DB] 🔍 Comparing trees with ${peerId}:`);
-        console.log(`[peerset.DB] Our records:`, Object.keys(localHashes).sort());
-        console.log(`[peerset.DB] Their records:`, request.tree.uuids.sort());
-        
-        // Find what we're missing from them (simple set difference)
-        const ourRecords = new Set(Object.keys(localHashes));
-        const theirRecords = new Set(request.tree.uuids as string[]);
-        const weNeed = [...theirRecords].filter((uuid: string) => !ourRecords.has(uuid));
-        
-        // Request what we need from them
-        if (weNeed.length > 0) {
-          console.log(`[peerset.DB] 🔍 Requesting ${weNeed.length} records from ${peerId}:`, weNeed);
-          sendSubtree({ requestUUIDs: weNeed }, peerId);
+      try {
+        // Handle subtree hash requests (progressive sync)
+        if (request.requestSubtreeHashes) {
+          await EfficientMerkleSync.handleSubtreeHashRequest(request, localHashes, sendSubtree, peerId);
           peerTraffic[peerId].sent.subtrees++;
-          statSubtreesExchanged++;
-        } else {
-          console.log(`[peerset.DB] ✅ No records needed from ${peerId}`);
-        }
-      }
-      
-      if (request.requestUUIDs) {
-        // Send specific records they requested
-        const fullRecord = await getAllRecords();
-        const toSend: Record<string, any> = {};
-        for (const uuid of request.requestUUIDs) {
-          if (fullRecord[uuid]) {
-            toSend[uuid] = fullRecord[uuid];
-          }
+          lastActivity[peerId] = Date.now();
+          return;
         }
         
-        if (Object.keys(toSend).length > 0) {
-          console.log(`[peerset.DB] 📤 Sending ${Object.keys(toSend).length} records to ${peerId}:`, Object.keys(toSend));
-          sendRecords(toSend, peerId);
-          statRecordsSent += Object.keys(toSend).length;
-          peerTraffic[peerId].sent.records += Object.keys(toSend).length;
+        // Handle received subtree hashes (compare and request deeper/records)
+        if (request.subtreeHashes) {
+          const neededRecords = await EfficientMerkleSync.handleSubtreeHashes(request, localHashes, sendSubtree, peerId);
+          if (neededRecords.length > 0) {
+            peerTraffic[peerId].sent.subtrees++;
+            statSubtreesExchanged++;
+            // Extend timeout when requesting more records
+            extendSyncTimeout(peerId);
+          }
+          lastActivity[peerId] = Date.now();
+          return;
         }
+        
+        // Handle record requests (final step of sync)
+        if (request.requestRecords) {
+          const fullRecord = await getAllRecords();
+          const toSend: Record<string, any> = {};
+          for (const uuid of request.requestRecords) {
+            if (fullRecord[uuid]) {
+              toSend[uuid] = fullRecord[uuid];
+            }
+          }
+          
+          if (Object.keys(toSend).length > 0) {
+            console.log(`[peerset.DB] 📤 Sending ${Object.keys(toSend).length} records to ${peerId}:`, Object.keys(toSend));
+            sendRecords(toSend, peerId);
+            statRecordsSent += Object.keys(toSend).length;
+            peerTraffic[peerId].sent.records += Object.keys(toSend).length;
+          }
+          lastActivity[peerId] = Date.now();
+          return;
+        }
+        
+        // Legacy support for old protocol
+        if (request.requestRoot || request.tree || request.requestUUIDs) {
+          console.log(`[peerset.DB] ⚠️  Using legacy sync protocol with ${peerId}`);
+          await handleLegacySubtreeRequest(request, peerId, localHashes);
+        }
+        
+      } catch (error) {
+        console.error(`[peerset.DB] Error handling subtree request from ${peerId}:`, error);
       }
       
       lastActivity[peerId] = Date.now();
     });
   
-    // Receive records from peer (per-peer processing)
+    // Receive records from peer (per-peer processing with batching)
     getRecords(async (records: Record<string, any>, peerId) => {
-      // ✅ FIXED: Check per-peer processing state
-      if (processingRecords[peerId]) {
-        console.log(`[peerset.DB] Already processing records from ${peerId}, skipping`);
+      // ✅ IMPROVED: Allow concurrent processing for different batch sizes
+      const batchSize = Object.keys(records).length;
+      if (processingRecords[peerId] && batchSize < 10) {
+        console.log(`[peerset.DB] Already processing records from ${peerId}, skipping small batch (${batchSize})`);
         return;
       }
       
@@ -374,6 +415,9 @@
         console.log(`[peerset.DB] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
         statReceivedRecords += incomingCount;
         peerTraffic[peerId].recv.records += incomingCount;
+        
+        // Extend sync timeout due to activity
+        extendSyncTimeout(peerId);
         
         // Record batch timing for adaptive delay calculation
         recordBatchTiming(peerId);
@@ -424,6 +468,9 @@
       } catch (error) {
         console.error(`[peerset.DB] Error processing records from ${peerId}:`, error);
         cleanupPeerSync(peerId);
+      } finally {
+        // Always release processing lock
+        processingRecords[peerId] = false;
       }
     });
   
@@ -444,8 +491,9 @@
       {statRootHashesSent}
       {statRootHashesReceived}
       {peerTraffic}
+      sendRootHashAction={sendRootHash}
       on:resetStats={handleResetStats}
-      on:sendRootHash={handleSendRootHash}
+      on:updatePeerTraffic={handleUpdatePeerTraffic}
     />
 
   </main>
