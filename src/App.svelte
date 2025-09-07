@@ -149,13 +149,17 @@
     }
     
     // Schedule completion check after a delay
-    syncCompletionChecks[peerId] = setTimeout(() => {
+    syncCompletionChecks[peerId] = setTimeout(async () => {
       // Check if there are still pending batches
       const pendingCount = EfficientMerkleSync.getPendingRecordCount(peerId);
       const hasPending = EfficientMerkleSync.hasPendingBatches(peerId);
       
       if (!hasPending && pendingCount === 0 && syncInProgress[peerId]) {
         console.log(`[peerset.DB] ✅ Sync truly complete for ${peerId} - no more pending batches`);
+        
+        // ✅ NEW: Check if we need to initiate reverse sync
+        await checkAndInitiateReverseSync(peerId);
+        
         cleanupPeerSync(peerId);
       } else {
         console.log(`[peerset.DB] Sync still active for ${peerId} - ${pendingCount} records pending`);
@@ -165,6 +169,27 @@
       
       delete syncCompletionChecks[peerId];
     }, 2000); // Wait 2 seconds to see if more batches arrive
+  }
+
+  // ✅ NEW: Check if we need to initiate reverse sync after receiving records
+  async function checkAndInitiateReverseSync(peerId: string) {
+    try {
+      // Get current local state after processing all received records
+      const localHashes = get(hashMapStore);
+      const localMerkleRoot = await getMerkleTree(localHashes);
+      
+      // Send our updated root hash to the peer
+      console.log(`[peerset.DB] 🔄 Sending updated root hash to ${peerId} for reverse sync check`);
+      sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
+      peerTraffic[peerId].sent.rootHashes++;
+      statRootHashesSent++;
+      
+      // Update activity to prevent immediate timeout
+      lastActivity[peerId] = Date.now();
+      
+    } catch (error) {
+      console.error(`[peerset.DB] Error initiating reverse sync check with ${peerId}:`, error);
+    }
   }
 
   // Calculate adaptive delay based on peer's batch timing history
@@ -319,10 +344,11 @@
     // ✅ Fixed: Receive root hash and start incremental sync
     // Sync Flow:
     // 1. Both peers exchange root hashes
-    // 2. If hashes differ, the peer with higher ID initiates sync
+    // 2. If hashes differ, both peers can initiate sync (bidirectional)
     // 3. Initiator requests full tree from other peer
     // 4. Initiator compares trees and requests missing records
     // 5. Other peer sends requested records
+    // 6. When one peer finishes, it sends updated root hash for reverse sync
     getRootHash(async (peerData, peerId) => {
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
@@ -366,6 +392,8 @@
           console.error(`[peerset.DB] Error starting sync with ${peerId}:`, error);
           cleanupPeerSync(peerId);
         }
+      } else {
+        console.log(`[peerset.DB] ✅ Root hashes match with ${peerId} - no sync needed`);
       }
 
       lastActivity[peerId] = Date.now();
