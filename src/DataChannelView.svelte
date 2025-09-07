@@ -1,16 +1,11 @@
 <script lang="ts">
   import { onMount, createEventDispatcher } from 'svelte';
+  import { terminalLogger, type LogMessage } from './terminalLogger.js';
   
   const dispatch = createEventDispatcher();
   
   // Props
-  export let peerTraffic: Record<string, { 
-    sent: { rootHashes: number; subtrees: number; records: number }; 
-    recv: { rootHashes: number; subtrees: number; records: number } 
-  }> = {};
-  
-  // Local state for message logs per peer
-  let peerMessages: Record<string, Array<{
+  export let p2pMessageData: Record<string, Array<{
     timestamp: string;
     type: 'sent' | 'received';
     channel: 'rootHash' | 'records' | 'subtree';
@@ -18,240 +13,165 @@
     size: number;
   }>> = {};
   
+  // Local state for client's comprehensive log
+  let clientMessages: LogMessage[] = [];
+  
   // Terminal window state
-  let terminalWindows: Array<{
-    peerId: string;
-    isMinimized: boolean;
-    isMaximized: boolean;
-  }> = [];
+  let isMinimized = false;
+  let isMaximized = false;
   
-  // Track previous peer traffic to detect changes
-  let previousPeerTraffic = {};
-  
-  // Function to add a message to a peer's log
-  function addMessage(peerId: string, type: 'sent' | 'received', channel: 'rootHash' | 'records' | 'subtree', data: any) {
-    if (!peerMessages[peerId]) {
-      peerMessages[peerId] = [];
-    }
+  // Subscribe to terminal logger updates
+  onMount(() => {
+    const unsubscribe = terminalLogger.subscribe((messages) => {
+      clientMessages = messages;
+    });
     
-    const message = {
-      timestamp: new Date().toLocaleTimeString(),
-      type,
-      channel,
-      data,
-      size: JSON.stringify(data).length
-    };
-    
-    peerMessages[peerId].push(message);
-    
-    // Keep only last 100 messages per peer to prevent memory issues
-    if (peerMessages[peerId].length > 100) {
-      peerMessages[peerId] = peerMessages[peerId].slice(-100);
-    }
-    
-    // Trigger reactivity
-    peerMessages = { ...peerMessages };
-  }
-  
-  // Function to create a terminal window for a new peer
-  function createTerminalWindow(peerId: string) {
-    if (!terminalWindows.find(w => w.peerId === peerId)) {
-      terminalWindows.push({
-        peerId,
-        isMinimized: false,
-        isMaximized: false
-      });
-      terminalWindows = [...terminalWindows];
-    }
-  }
-  
-  // Function to remove a terminal window when peer leaves
-  function removeTerminalWindow(peerId: string) {
-    terminalWindows = terminalWindows.filter(w => w.peerId !== peerId);
-    delete peerMessages[peerId];
-    peerMessages = { ...peerMessages };
-  }
+    return unsubscribe;
+  });
   
   // Function to toggle terminal window state
-  function toggleMinimize(peerId: string) {
-    const window = terminalWindows.find(w => w.peerId === peerId);
-    if (window) {
-      window.isMinimized = !window.isMinimized;
-      terminalWindows = [...terminalWindows];
-    }
+  function toggleMinimize() {
+    isMinimized = !isMinimized;
   }
   
-  function toggleMaximize(peerId: string) {
-    const window = terminalWindows.find(w => w.peerId === peerId);
-    if (window) {
-      window.isMaximized = !window.isMaximized;
-      terminalWindows = [...terminalWindows];
-    }
+  function toggleMaximize() {
+    isMaximized = !isMaximized;
   }
   
-  // Function to clear messages for a peer
-  function clearMessages(peerId: string) {
-    if (peerMessages[peerId]) {
-      peerMessages[peerId] = [];
-      peerMessages = { ...peerMessages };
-    }
-  }
-  
-  // Function to get message count for a peer
-  function getMessageCount(peerId: string): number {
-    return peerMessages[peerId]?.length || 0;
-  }
-  
-  // Function to get recent messages for a peer
-  function getRecentMessages(peerId: string, count: number = 20) {
-    const messages = peerMessages[peerId] || [];
-    return messages.slice(-count);
+  // Function to clear messages
+  function clearMessages() {
+    terminalLogger.clear();
   }
   
   // Function to format message for display
   function formatMessage(message: any): string {
+    const peerInfo = message.peerId ? `[${message.peerId.substring(0, 8)}] ` : '';
+    
     if (message.channel === 'rootHash') {
-      return `Root Hash: ${message.data.merkleRoot?.substring(0, 16)}...`;
-    } else if (message.channel === 'records') {
-      if (message.data.count) {
-        return `Records (${message.data.count}): ${message.data.records}`;
-      } else {
-        const recordCount = Object.keys(message.data).length;
-        return `Records (${recordCount}): ${Object.keys(message.data).slice(0, 3).join(', ')}${recordCount > 3 ? '...' : ''}`;
+      if (message.data.merkleRoot) {
+        return `${peerInfo}Root Hash: ${message.data.merkleRoot.substring(0, 16)}...`;
       }
+      return `${peerInfo}Root Hash: ${JSON.stringify(message.data)}`;
+    } else if (message.channel === 'records') {
+      const recordCount = Object.keys(message.data).length;
+      const recordIds = Object.keys(message.data).slice(0, 3);
+      return `${peerInfo}Records (${recordCount}): ${recordIds.join(', ')}${recordCount > 3 ? '...' : ''}`;
     } else if (message.channel === 'subtree') {
       if (message.data.requestSubtreeHashes) {
-        return `Subtree Request: ${message.data.requestSubtreeHashes.path || 'root'} (depth: ${message.data.requestSubtreeHashes.depth})`;
+        return `${peerInfo}Subtree Request: ${message.data.requestSubtreeHashes.path || 'root'} (depth: ${message.data.requestSubtreeHashes.depth})`;
       } else if (message.data.subtreeHashes) {
-        return `Subtree Response: ${message.data.subtreeHashes.length} hashes`;
+        return `${peerInfo}Subtree Response: ${message.data.subtreeHashes.length} hashes`;
       } else if (message.data.requestRecords) {
-        return `Record Request: ${message.data.requestRecords.length} records`;
+        return `${peerInfo}Record Request: ${message.data.requestRecords.length} records`;
       }
+      return `${peerInfo}Subtree: ${JSON.stringify(message.data).substring(0, 50)}...`;
+    } else if (message.channel === 'connection') {
+      return `${peerInfo}${message.data}`;
+    } else if (message.channel === 'sync') {
+      return `${peerInfo}${message.data}`;
+    } else if (message.channel === 'moderation') {
+      return `${peerInfo}Moderation: ${message.data}`;
+    } else if (message.channel === 'database') {
+      return `${peerInfo}Database: ${message.data}`;
+    } else if (message.channel === 'merkle') {
+      return `${peerInfo}Merkle: ${message.data}`;
+    } else if (message.channel === 'internal') {
+      return `${peerInfo}Internal: ${message.data}`;
     }
-    return `Data (${message.size} bytes)`;
+    return `${peerInfo}Data (${message.size} bytes)`;
   }
   
-  // Watch for peer traffic changes to simulate message logging
-  $: if (peerTraffic) {
-    // Check for new peers
-    const currentPeers = Object.keys(peerTraffic);
-    const previousPeers = Object.keys(previousPeerTraffic);
-    
-    // Add new peers
-    for (const peerId of currentPeers) {
-      if (!previousPeers.includes(peerId)) {
-        createTerminalWindow(peerId);
-        addMessage(peerId, 'received', 'rootHash', { merkleRoot: 'connecting...' });
-      }
-    }
-    
-    // Remove left peers
-    for (const peerId of previousPeers) {
-      if (!currentPeers.includes(peerId)) {
-        removeTerminalWindow(peerId);
-      }
-    }
-    
-    // Check for traffic changes and add messages
-    for (const [peerId, traffic] of Object.entries(peerTraffic)) {
-      const prevTraffic = previousPeerTraffic[peerId];
-      if (prevTraffic) {
-        // Check for sent messages
-        if (traffic.sent.rootHashes > prevTraffic.sent.rootHashes) {
-          addMessage(peerId, 'sent', 'rootHash', { merkleRoot: 'current_root_hash' });
-        }
-        if (traffic.sent.records > prevTraffic.sent.records) {
-          const recordCount = traffic.sent.records - prevTraffic.sent.records;
-          addMessage(peerId, 'sent', 'records', { count: recordCount, records: `batch_${Date.now()}` });
-        }
-        if (traffic.sent.subtrees > prevTraffic.sent.subtrees) {
-          addMessage(peerId, 'sent', 'subtree', { requestSubtreeHashes: { path: 'root', depth: 2 } });
-        }
-        
-        // Check for received messages
-        if (traffic.recv.rootHashes > prevTraffic.recv.rootHashes) {
-          addMessage(peerId, 'received', 'rootHash', { merkleRoot: 'remote_root_hash' });
-        }
-        if (traffic.recv.records > prevTraffic.recv.records) {
-          const recordCount = traffic.recv.records - prevTraffic.recv.records;
-          addMessage(peerId, 'received', 'records', { count: recordCount, records: `batch_${Date.now()}` });
-        }
-        if (traffic.recv.subtrees > prevTraffic.recv.subtrees) {
-          addMessage(peerId, 'received', 'subtree', { subtreeHashes: [{ path: 'root', hash: 'abc123...' }] });
+  // Watch for P2P message data changes to log them
+  $: if (p2pMessageData) {
+    for (const [peerId, messages] of Object.entries(p2pMessageData)) {
+      if (messages && messages.length > 0) {
+        // Log each P2P message to the terminal logger
+        for (const msg of messages) {
+          terminalLogger.logP2PMessage(msg.type, msg.channel, msg.data, peerId);
         }
       }
     }
-    
-    previousPeerTraffic = JSON.parse(JSON.stringify(peerTraffic));
   }
   
   // Expose functions for external use
-  export function logMessage(peerId: string, type: 'sent' | 'received', channel: 'rootHash' | 'records' | 'subtree', data: any) {
-    addMessage(peerId, type, channel, data);
+  export function logMessage(
+    type: 'sent' | 'received' | 'system' | 'error' | 'debug', 
+    channel: 'rootHash' | 'records' | 'subtree' | 'connection' | 'sync' | 'moderation' | 'database' | 'merkle' | 'internal', 
+    data: any, 
+    peerId?: string,
+    level: 'info' | 'warn' | 'error' | 'debug' = 'info'
+  ) {
+    terminalLogger.log(type, channel, data, peerId, level);
   }
 </script>
 
 <div class="datachannel-view">
   <div class="header">
-    <h3>Data Channel View - Real-time Peer Communication</h3>
+    <h3>Data Channel View - Client Terminal</h3>
     <div class="controls">
-      <button on:click={() => terminalWindows.forEach(w => w.isMinimized = false)} class="btn-small">
-        Expand All
-      </button>
-      <button on:click={() => terminalWindows.forEach(w => w.isMinimized = true)} class="btn-small">
-        Minimize All
+      <button on:click={clearMessages} class="btn-small">
+        Clear Log
       </button>
     </div>
   </div>
   
-  <div class="terminals-container">
-    {#each terminalWindows as window (window.peerId)}
-      <div class="terminal-window" class:minimized={window.isMinimized} class:maximized={window.isMaximized}>
-        <div class="terminal-header">
-          <div class="terminal-title">
-            <span class="peer-id">Peer: {window.peerId.substring(0, 8)}...</span>
-            <span class="message-count">({getMessageCount(window.peerId)} messages)</span>
-          </div>
-          <div class="terminal-controls">
-            <button on:click={() => clearMessages(window.peerId)} class="btn-clear" title="Clear messages">×</button>
-            <button on:click={() => toggleMinimize(window.peerId)} class="btn-minimize" title="Minimize">
-              {window.isMinimized ? '□' : '−'}
-            </button>
-            <button on:click={() => toggleMaximize(window.peerId)} class="btn-maximize" title="Maximize">
-              {window.isMaximized ? '⊡' : '⊞'}
-            </button>
-          </div>
+  <div class="terminal-container">
+    <div class="terminal-window" class:minimized={isMinimized} class:maximized={isMaximized}>
+      <div class="terminal-header">
+        <div class="terminal-title">
+          <span class="client-label">Client Terminal</span>
+          <span class="message-count">({clientMessages.length} messages)</span>
         </div>
-        
-        {#if !window.isMinimized}
+        <div class="terminal-controls">
+          <button on:click={clearMessages} class="btn-clear" title="Clear messages">×</button>
+          <button on:click={toggleMinimize} class="btn-minimize" title="Minimize">
+            {isMinimized ? '□' : '−'}
+          </button>
+          <button on:click={toggleMaximize} class="btn-maximize" title="Maximize">
+            {isMaximized ? '⊡' : '⊞'}
+          </button>
+        </div>
+      </div>
+      
+        {#if !isMinimized}
           <div class="terminal-body">
             <div class="terminal-content">
-              {#each getRecentMessages(window.peerId, 15) as message}
-                <div class="message-line" class:sent={message.type === 'sent'} class:received={message.type === 'received'}>
+              {#each clientMessages as message}
+                <div class="message-line" 
+                     class:sent={message.type === 'sent'} 
+                     class:received={message.type === 'received'}
+                     class:system={message.type === 'system'}
+                     class:error={message.type === 'error'}
+                     class:debug={message.type === 'debug'}
+                     class:level-info={message.level === 'info'}
+                     class:level-warn={message.level === 'warn'}
+                     class:level-error={message.level === 'error'}
+                     class:level-debug={message.level === 'debug'}>
                   <span class="timestamp">[{message.timestamp}]</span>
-                  <span class="direction">{message.type === 'sent' ? '→' : '←'}</span>
+                  <span class="direction">
+                    {#if message.type === 'sent'}
+                      →
+                    {:else if message.type === 'received'}
+                      ←
+                    {:else if message.type === 'system'}
+                      ⚙
+                    {:else if message.type === 'error'}
+                      ✗
+                    {:else if message.type === 'debug'}
+                      🔍
+                    {/if}
+                  </span>
                   <span class="channel">[{message.channel}]</span>
                   <span class="message-data">{formatMessage(message)}</span>
                 </div>
               {/each}
-              {#if getMessageCount(window.peerId) === 0}
+              {#if clientMessages.length === 0}
                 <div class="no-messages">No messages yet...</div>
               {/if}
             </div>
           </div>
         {/if}
-      </div>
-    {/each}
-    
-    {#if terminalWindows.length === 0}
-      <div class="no-peers">
-        <div class="no-peers-content">
-          <div class="no-peers-icon">📡</div>
-          <div class="no-peers-text">No peers connected</div>
-          <div class="no-peers-subtext">Terminal windows will appear when peers join</div>
-        </div>
-      </div>
-    {/if}
+    </div>
   </div>
 </div>
 
@@ -321,13 +241,8 @@
     transform: translateY(-1px);
   }
   
-  .terminals-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 12px;
+  .terminal-container {
     padding: 12px;
-    max-height: 400px;
-    overflow-y: auto;
   }
   
   .terminal-window {
@@ -353,8 +268,7 @@
   }
   
   .terminal-window.maximized {
-    grid-column: 1 / -1;
-    height: 300px;
+    height: 600px;
   }
   
   .terminal-header {
@@ -375,7 +289,7 @@
     font-weight: 600;
   }
   
-  .peer-id {
+  .client-label {
     color: var(--accent-success);
     font-weight: 700;
   }
@@ -384,6 +298,7 @@
     color: var(--text-secondary);
     font-weight: 500;
   }
+  
   
   .terminal-controls {
     display: flex;
@@ -422,7 +337,7 @@
   }
   
   .terminal-body {
-    height: 200px;
+    height: 400px;
     overflow-y: auto;
     background: var(--glass-bg);
   }
@@ -447,6 +362,39 @@
   
   .message-line.received {
     color: var(--accent-primary);
+  }
+  
+  .message-line.system {
+    color: var(--accent-warning);
+  }
+  
+  .message-line.error {
+    color: #ff4444;
+    background: rgba(255, 68, 68, 0.1);
+    border-left: 2px solid #ff4444;
+    padding-left: 4px;
+  }
+  
+  .message-line.debug {
+    color: var(--text-muted);
+    opacity: 0.8;
+  }
+  
+  .message-line.level-warn {
+    background: rgba(255, 170, 0, 0.1);
+    border-left: 2px solid #ffaa00;
+    padding-left: 4px;
+  }
+  
+  .message-line.level-error {
+    background: rgba(255, 68, 68, 0.1);
+    border-left: 2px solid #ff4444;
+    padding-left: 4px;
+  }
+  
+  .message-line.level-debug {
+    opacity: 0.7;
+    font-size: 11px;
   }
   
   .timestamp {
@@ -477,36 +425,6 @@
     padding: 20px;
   }
   
-  .no-peers {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 200px;
-  }
-  
-  .no-peers-content {
-    text-align: center;
-    color: var(--text-muted);
-  }
-  
-  .no-peers-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
-    opacity: 0.7;
-  }
-  
-  .no-peers-text {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 4px;
-    color: var(--text-secondary);
-  }
-  
-  .no-peers-subtext {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
   
   /* Scrollbar styling */
   .terminal-body::-webkit-scrollbar {

@@ -21,6 +21,14 @@
       recv: { rootHashes: number; subtrees: number; records: number }
     }
   > = {};
+  
+  export let p2pMessageData: Record<string, Array<{
+    timestamp: string;
+    type: 'sent' | 'received';
+    channel: 'rootHash' | 'records' | 'subtree';
+    data: any;
+    size: number;
+  }>> = {};
 
   // Additional props needed for handleSendRootHash
   export let sendRootHashAction: (data: { merkleRoot: string }, peerId: string) => void;
@@ -222,7 +230,7 @@
   <div style="margin: 0; padding: 0; width: 100%; height: 100%;">
     
     <!-- 1. Data Channel View -->
-    <DataChannelView {peerTraffic} />
+    <DataChannelView {peerTraffic} {p2pMessageData} />
 
     <!-- 2. Smaller Stats Table -->
     <div class="glass-card" style="display: grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap: 8px; margin: 16px 0; padding: 12px;">

@@ -7,6 +7,7 @@
   import { getMerkleTree, buildMerkleTreeNodes, type MerkleNode } from './merkleTree.js';
   import { EfficientMerkleSync, type SubtreeRequest } from './efficientMerkleSync.js';
   import Ui from './UI.svelte';
+  import { terminalLogger } from './terminalLogger.js';
   
   // --- Stores ---
   import { hashMapStore, merkleRoot } from './stores';
@@ -35,6 +36,15 @@
   let hashMapStoreUpdateQueue: Array<{ uuid: string; hash: string }> = [];
   let isUpdatingHashMapStore = false;
   
+  // Real-time P2P message data for DataChannelView
+  let p2pMessageData: Record<string, Array<{
+    timestamp: string;
+    type: 'sent' | 'received';
+    channel: 'rootHash' | 'records' | 'subtree';
+    data: any;
+    size: number;
+  }>> = {};
+  
   // Batch merkle root recalculation optimization
   let pendingMerkleUpdates: Record<string, NodeJS.Timeout> = {}; // Track pending updates per peer
   let peerBatchTimings: Record<string, number[]> = {}; // Track batch arrival times per peer
@@ -44,6 +54,30 @@
   
   // --- Helper Functions ---
   
+  // Function to log P2P messages for DataChannelView
+  function logP2PMessage(peerId: string, type: 'sent' | 'received', channel: 'rootHash' | 'records' | 'subtree', data: any) {
+    if (!p2pMessageData[peerId]) {
+      p2pMessageData[peerId] = [];
+    }
+    
+    const message = {
+      timestamp: new Date().toLocaleTimeString(),
+      type,
+      channel,
+      data,
+      size: JSON.stringify(data).length
+    };
+    
+    p2pMessageData[peerId].push(message);
+    
+    // Keep only last 100 messages per peer to prevent memory issues
+    if (p2pMessageData[peerId].length > 100) {
+      p2pMessageData[peerId] = p2pMessageData[peerId].slice(-100);
+    }
+    
+    // Trigger reactivity
+    p2pMessageData = { ...p2pMessageData };
+  }
 
   function initPeer(peerId: string) {
     if (!peerTraffic[peerId]) {
@@ -112,6 +146,7 @@
       const hasPending = EfficientMerkleSync.hasPendingBatches(peerId);
       
       if (!hasPending && pendingCount === 0 && syncInProgress[peerId]) {
+        terminalLogger.logSync(`Sync truly complete for ${peerId} - no more pending batches`, peerId);
         console.log(`[peerset.DB] ✅ Sync truly complete for ${peerId} - no more pending batches`);
         
         // ✅ NEW: Check if we need to initiate reverse sync
@@ -119,6 +154,7 @@
         
         cleanupPeerSync(peerId);
       } else {
+        terminalLogger.logSync(`Sync still active for ${peerId} - ${pendingCount} records pending`, peerId);
         console.log(`[peerset.DB] Sync still active for ${peerId} - ${pendingCount} records pending`);
         // Schedule another check
         scheduleCompletionCheck(peerId);
@@ -135,8 +171,12 @@
       const localMerkleRootHash = get(merkleRoot);
       
       // Send our updated root hash to the peer
+      terminalLogger.logSync(`Sending updated root hash to ${peerId} for reverse sync check`, peerId);
       console.log(`[peerset.DB] 🔄 Sending updated root hash to ${peerId} for reverse sync check`);
-      sendRootHash({ merkleRoot: localMerkleRootHash }, peerId);
+      const rootHashData = { merkleRoot: localMerkleRootHash };
+      sendRootHash(rootHashData, peerId);
+      logP2PMessage(peerId, 'sent', 'rootHash', rootHashData);
+      terminalLogger.logP2PMessage('sent', 'rootHash', rootHashData, peerId);
       peerTraffic[peerId].sent.rootHashes++;
       statRootHashesSent++;
       
@@ -144,6 +184,7 @@
       lastActivity[peerId] = Date.now();
       
     } catch (error) {
+      terminalLogger.logError(`Error initiating reverse sync check with ${peerId}`, error, peerId);
       console.error(`[peerset.DB] Error initiating reverse sync check with ${peerId}:`, error);
     }
   }
@@ -194,15 +235,18 @@
     
     // Calculate adaptive delay based on peer's batch timing history
     const delay = calculateAdaptiveDelay(peerId);
+    terminalLogger.logMerkle(`Scheduled merkle root update for ${peerId} in ${delay}ms`, peerId);
     
     // Schedule new update after adaptive delay
     pendingMerkleUpdates[peerId] = setTimeout(async () => {
+      terminalLogger.logMerkle(`Recalculating merkle root after batch completion from ${peerId}`, peerId);
       console.log(`[peerset.DB] Recalculating merkle root after batch completion from ${peerId}`);
       
       // Update Merkle root using cached version
       const hashes = get(hashMapStore);
       const localMerkleRoot = await getMerkleTree(hashes);
       merkleRoot.set(localMerkleRoot.hash);
+      terminalLogger.logMerkle(`Merkle root updated: ${localMerkleRoot.hash.substring(0, 16)}...`, peerId);
       
       // Clean up the timeout
       delete pendingMerkleUpdates[peerId];
@@ -267,6 +311,7 @@
     [sendSubtree, getSubtree] = room.makeAction('subtree'); // ✅ New subtree exchange
   
     // Load persisted records
+    terminalLogger.logDatabase(`Loading persisted records...`);
     const persisted = await getAllRecords();
     const hashMap: Record<string, string> = {};
     for (const [uuid, record] of Object.entries(persisted)) {
@@ -276,21 +321,28 @@
   
     const localMerkleRoot = await buildMerkleTreeNodes(hashMap);
     merkleRoot.set(localMerkleRoot.hash);
+    terminalLogger.logDatabase(`Loaded ${Object.keys(hashMap).length} persisted records`);
+    terminalLogger.logConnection(`My peer ID: ${selfId}`);
     console.log(`[peerset.DB] Loaded ${Object.keys(hashMap).length} persisted records`);
     console.log(`[peerset.DB] My peer ID: ${selfId}`);
   
     // Peer joins
     room.onPeerJoin(peerId => {
+      terminalLogger.logConnection(`Peer ${peerId} joined`, peerId);
       console.log(`[peerset.DB] Peer ${peerId} joined`);
       initPeer(peerId);
       // ✅ Send only root hash first, not full tree
-      sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
+      const rootHashData = { merkleRoot: localMerkleRoot.hash };
+      sendRootHash(rootHashData, peerId);
+      logP2PMessage(peerId, 'sent', 'rootHash', rootHashData);
+      terminalLogger.logP2PMessage('sent', 'rootHash', rootHashData, peerId);
       peerTraffic[peerId].sent.rootHashes++;
       statRootHashesSent++;
     });
   
     // Peer leaves
     room.onPeerLeave(peerId => {
+      terminalLogger.logConnection(`Peer ${peerId} left`, peerId);
       console.log(`[peerset.DB] Peer ${peerId} left`);
       delete peerTraffic[peerId];
       delete lastActivity[peerId];
@@ -308,6 +360,8 @@
     getRootHash(async (peerData, peerId) => {
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
+      logP2PMessage(peerId, 'received', 'rootHash', peerData);
+      terminalLogger.logP2PMessage('received', 'rootHash', peerData, peerId);
       peerTraffic[peerId].recv.rootHashes++;
       statRootHashesReceived++;
 
@@ -315,10 +369,12 @@
       const localMerkleRootHash = get(merkleRoot);
 
       if (peerData.merkleRoot !== localMerkleRootHash) {
+        terminalLogger.logSync(`Root differs with peer ${peerId}. Starting stateless sync...`, peerId);
         console.log(`[peerset.DB] Root differs with peer ${peerId}. Starting stateless sync...`);
         
         // ✅ NEW: Check if we're currently processing records from this peer
         if (processingRecords[peerId]) {
+          terminalLogger.logSync(`Deferring sync with ${peerId} - currently processing records`, peerId);
           console.log(`[peerset.DB] Deferring sync with ${peerId} - currently processing records`);
           lastActivity[peerId] = Date.now();
           return;
@@ -326,6 +382,7 @@
         
         // ✅ FIXED: Check sync state atomically before starting
         if (syncInProgress[peerId]) {
+          terminalLogger.logSync(`Sync already in progress with ${peerId}`, peerId);
           console.log(`[peerset.DB] Sync already in progress with ${peerId}`);
           lastActivity[peerId] = Date.now();
           return;
@@ -333,23 +390,31 @@
         
         // Atomically set sync state
         syncInProgress[peerId] = true;
+        terminalLogger.logSync(`Starting sync with ${peerId}`, peerId);
         console.log(`[peerset.DB] ✅ Starting sync with ${peerId}`);
         
         try {
           // Use efficient Merkle sync instead of sending full tree
           const localHashes = get(hashMapStore);
-          await EfficientMerkleSync.startSync(localHashes, peerData.merkleRoot, sendSubtree, peerId);
+          await EfficientMerkleSync.startSync(localHashes, peerData.merkleRoot, (data, targetPeerId) => {
+            logP2PMessage(targetPeerId, 'sent', 'subtree', data);
+            terminalLogger.logP2PMessage('sent', 'subtree', data, targetPeerId);
+            sendSubtree(data, targetPeerId);
+          }, peerId);
           
           // Reset sync state after timeout (increased for large datasets)
           syncTimeouts[peerId] = setTimeout(() => {
+            terminalLogger.logError(`Sync timeout with ${peerId}, resetting state`, null, peerId);
             console.log(`[peerset.DB] Sync timeout with ${peerId}, resetting state`);
             cleanupPeerSync(peerId);
           }, 120000); // 2 minutes for large dataset sync
         } catch (error) {
+          terminalLogger.logError(`Error starting sync with ${peerId}`, error, peerId);
           console.error(`[peerset.DB] Error starting sync with ${peerId}:`, error);
           cleanupPeerSync(peerId);
         }
       } else {
+        terminalLogger.logSync(`Root hashes match with ${peerId} - no sync needed`, peerId);
         console.log(`[peerset.DB] ✅ Root hashes match with ${peerId} - no sync needed`);
       }
 
@@ -359,12 +424,19 @@
     // ✅ Efficient subtree handling using progressive Merkle sync
     getSubtree(async (request: SubtreeRequest, peerId) => {
       initPeer(peerId);
+      logP2PMessage(peerId, 'received', 'subtree', request);
+      terminalLogger.logP2PMessage('received', 'subtree', request, peerId);
       const localHashes = get(hashMapStore);
       
       try {
         // Handle subtree hash requests (progressive sync)
         if (request.requestSubtreeHashes) {
-          await EfficientMerkleSync.handleSubtreeHashRequest(request, localHashes, sendSubtree, peerId);
+          terminalLogger.logSync(`Handling subtree hash request from ${peerId}`, peerId);
+          await EfficientMerkleSync.handleSubtreeHashRequest(request, localHashes, (data, targetPeerId) => {
+            logP2PMessage(targetPeerId, 'sent', 'subtree', data);
+            terminalLogger.logP2PMessage('sent', 'subtree', data, targetPeerId);
+            sendSubtree(data, targetPeerId);
+          }, peerId);
           peerTraffic[peerId].sent.subtrees++;
           lastActivity[peerId] = Date.now();
           return;
@@ -372,7 +444,12 @@
         
         // Handle received subtree hashes (compare and request deeper/records)
         if (request.subtreeHashes) {
-          const neededRecords = await EfficientMerkleSync.handleSubtreeHashes(request, localHashes, sendSubtree, peerId);
+          terminalLogger.logSync(`Handling subtree hashes from ${peerId}`, peerId);
+          const neededRecords = await EfficientMerkleSync.handleSubtreeHashes(request, localHashes, (data, targetPeerId) => {
+            logP2PMessage(targetPeerId, 'sent', 'subtree', data);
+            terminalLogger.logP2PMessage('sent', 'subtree', data, targetPeerId);
+            sendSubtree(data, targetPeerId);
+          }, peerId);
           if (neededRecords.length > 0) {
             peerTraffic[peerId].sent.subtrees++;
             statSubtreesExchanged++;
@@ -385,6 +462,7 @@
         
         // Handle record requests (final step of sync)
         if (request.requestRecords) {
+          terminalLogger.logSync(`Handling record request from ${peerId} for ${request.requestRecords.length} records`, peerId);
           const fullRecord = await getAllRecords();
           const toSend: Record<string, any> = {};
           for (const uuid of request.requestRecords) {
@@ -394,8 +472,11 @@
           }
           
           if (Object.keys(toSend).length > 0) {
+            terminalLogger.logDatabase(`Sending ${Object.keys(toSend).length} records to ${peerId}`, peerId);
             console.log(`[peerset.DB] 📤 Sending ${Object.keys(toSend).length} records to ${peerId}:`, Object.keys(toSend));
             sendRecords(toSend, peerId);
+            logP2PMessage(peerId, 'sent', 'records', toSend);
+            terminalLogger.logP2PMessage('sent', 'records', toSend, peerId);
             statRecordsSent += Object.keys(toSend).length;
             peerTraffic[peerId].sent.records += Object.keys(toSend).length;
           }
@@ -405,6 +486,7 @@
         
         
       } catch (error) {
+        terminalLogger.logError(`Error handling subtree request from ${peerId}`, error, peerId);
         console.error(`[peerset.DB] Error handling subtree request from ${peerId}:`, error);
       }
       
@@ -415,9 +497,12 @@
     getRecords(async (records: Record<string, any>, peerId) => {
       processingRecords[peerId] = true;
       initPeer(peerId);
+      logP2PMessage(peerId, 'received', 'records', records);
+      terminalLogger.logP2PMessage('received', 'records', records, peerId);
 
       try {
         const incomingCount = Object.keys(records).length;
+        terminalLogger.logDatabase(`Received ${incomingCount} records from ${peerId}`, peerId);
         console.log(`[peerset.DB] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
         statReceivedRecords += incomingCount;
         peerTraffic[peerId].recv.records += incomingCount;
@@ -429,16 +514,20 @@
         recordBatchTiming(peerId);
     
         // Batch moderate all records at once
+        terminalLogger.logModeration(`Moderating ${incomingCount} records from ${peerId}`, peerId);
         const moderationResults = await moderateRecordsBatch(records);
         
         // Filter approved records for batch processing
         const approvedRecords = {};
         const approvedHashes = {};
         let processedCount = 0;
+        let rejectedCount = 0;
         
         for (const [uuid, record] of Object.entries(records)) {
           if (!moderationResults[uuid]) {
+            terminalLogger.logModeration(`Record ${uuid} rejected by moderation`, peerId);
             console.log(`[peerset.DB] Record ${uuid} rejected by moderation`);
+            rejectedCount++;
             continue;
           }
           approvedRecords[uuid] = record;
@@ -446,9 +535,12 @@
           processedCount++;
         }
         
+        terminalLogger.logModeration(`Moderation complete: ${processedCount} approved, ${rejectedCount} rejected`, peerId);
+        
         // Batch save all approved records
         if (Object.keys(approvedRecords).length > 0) {
           try {
+            terminalLogger.logDatabase(`Saving ${Object.keys(approvedRecords).length} approved records`, peerId);
             await saveRecordsBatch(approvedRecords);
             
             // Batch update hash map store
@@ -456,14 +548,18 @@
               ...local,
               ...approvedHashes
             }));
+            terminalLogger.logDatabase(`Updated hash map store with ${Object.keys(approvedHashes).length} new hashes`, peerId);
           } catch (error) {
+            terminalLogger.logError(`Error batch processing records from ${peerId}`, error, peerId);
             console.error(`[peerset.DB] Error batch processing records from ${peerId}:`, error);
           }
         }
     
+        terminalLogger.logDatabase(`Processed ${processedCount}/${incomingCount} records from ${peerId}`, peerId);
         console.log(`[peerset.DB] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
     
         // Schedule merkle root recalculation (debounced for batching optimization)
+        terminalLogger.logMerkle(`Scheduling merkle root update for ${peerId}`, peerId);
         scheduleMerkleRootUpdate(peerId);
 
         // Don't update lastActivity here to prevent immediate re-sync
@@ -472,6 +568,7 @@
         // Schedule a completion check to see if sync is truly done
         scheduleCompletionCheck(peerId);
       } catch (error) {
+        terminalLogger.logError(`Error processing records from ${peerId}`, error, peerId);
         console.error(`[peerset.DB] Error processing records from ${peerId}:`, error);
         cleanupPeerSync(peerId);
       } finally {
@@ -500,6 +597,7 @@
       {statRootHashesSent}
       {statRootHashesReceived}
       {peerTraffic}
+      {p2pMessageData}
       sendRootHashAction={sendRootHash}
       on:resetStats={handleResetStats}
       on:updatePeerTraffic={handleUpdatePeerTraffic}
