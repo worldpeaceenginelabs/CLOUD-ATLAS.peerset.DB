@@ -4,7 +4,7 @@
   import { get } from 'svelte/store';
   import { getAllRecords, saveRecord } from './db.js';
   import { sha256 } from './secp256k1.js';
-  import { moderateRecord } from './moderation.js';
+  import { moderateRecord, moderateRecordsBatch } from './moderation.js';
   import Ui from './UI.svelte';
   
   // --- Stores ---
@@ -446,11 +446,13 @@
         statReceivedRecords += incomingCount;
         peerTraffic[peerId].recv.records += incomingCount;
     
+        // Batch moderate all records at once
+        const moderationResults = await moderateRecordsBatch(records);
+        
         let processedCount = 0;
         for (const [uuid, record] of Object.entries(records)) {
           try {
-            const approved = await moderateRecord(record);
-            if (!approved) {
+            if (!moderationResults[uuid]) {
               console.log(`[peerset.DB] Record ${uuid} rejected by moderation`);
               continue;
             }
