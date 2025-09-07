@@ -586,6 +586,7 @@
       {statRootHashesReceived}
       {peerTraffic}
       {p2pMessageData}
+      currentMerkleRoot={$merkleRoot}
       sendRootHashAction={sendRootHash}
       on:resetStats={handleResetStats}
       on:updatePeerTraffic={handleUpdatePeerTraffic}

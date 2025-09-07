@@ -32,6 +32,7 @@
 
   // Additional props needed for handleSendRootHash
   export let sendRootHashAction: (data: { merkleRoot: string }, peerId: string) => void;
+  export let currentMerkleRoot: string = '';
 
   // Derive peers online
   $: peersOnline = Object.keys(peerTraffic || {}).length;
@@ -227,7 +228,7 @@
   <div style="margin: 0; padding: 0; width: 100%; height: 100%;">
     
     <!-- 1. Data Channel View -->
-    <DataChannelView {p2pMessageData} />
+    <DataChannelView {currentMerkleRoot} {p2pMessageData} />
 
     <!-- 2. Smaller Stats Table -->
     <div class="glass-card" style="display: grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap: 8px; margin: 16px 0; padding: 12px;">

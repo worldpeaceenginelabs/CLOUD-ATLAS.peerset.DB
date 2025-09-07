@@ -5,6 +5,7 @@
   const dispatch = createEventDispatcher();
   
   // Props
+  export let currentMerkleRoot: string = '';
   export let p2pMessageData: Record<string, Array<{
     timestamp: string;
     type: 'sent' | 'received';
@@ -107,7 +108,7 @@
 
 <div class="datachannel-view">
   <div class="header">
-    <h3>Data Channel View - Client Terminal</h3>
+    <h3>{currentMerkleRoot ? currentMerkleRoot.substring(0, 16) + '...' : 'Loading...'}</h3>
     <div class="controls">
       <button on:click={clearMessages} class="btn-small">
         Clear Log
