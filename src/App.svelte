@@ -332,6 +332,13 @@
       if (peerData.merkleRoot !== localMerkleRoot.hash) {
         console.log(`[peerset.DB] Root differs with peer ${peerId}. Starting stateless sync...`);
         
+        // ✅ NEW: Check if we're currently processing records from this peer
+        if (processingRecords[peerId]) {
+          console.log(`[peerset.DB] Deferring sync with ${peerId} - currently processing records`);
+          lastActivity[peerId] = Date.now();
+          return;
+        }
+        
         // ✅ FIXED: Check sync state atomically before starting
         if (syncInProgress[peerId]) {
           console.log(`[peerset.DB] Sync already in progress with ${peerId}`);
