@@ -1,3 +1,5 @@
+# 🚧 Under Construction but 99% working
+
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a46333c1-dfe7-4f17-8118-f75175d2f819" />
 
 # 🚀 peerset.DB — The Database From the Future
@@ -48,7 +50,7 @@ It stupidly syncs everything you throw at it.
 <br><br><br>
 
 - [x] Decentralized peer-to-peer network using **[Trystero](https://github.com/dmotz/trystero)**: A hash of the room name is announced on the public **[BitTorrent](https://www.bittorrent.com/)** tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)   
-- [x] **Incremental Merkle Tree:** AVL-balanced, allowing O(log n) updates and subtree comparisons. **Lazy Updates:** Hashes are computed asynchronously to avoid blocking operations.  
+- [x] **Incremental Merkle Tree:** allowing O(log n) updates and subtree comparisons. **Lazy Updates:** Hashes are computed asynchronously to avoid blocking operations.  
 - [x] Full record **deduplication** and **IndexedDB** persistence  
 - [x] **Broadcast and request** missing records **automatically** among peers
 - [x] Basic **Moderation & strike system**: **bad-word detection** and **regex** on text field (no link in text policy), regex check on link field
