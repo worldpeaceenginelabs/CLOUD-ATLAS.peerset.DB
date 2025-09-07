@@ -573,7 +573,7 @@
       <h2 style="margin: 0; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
         peerset.DB
       </h2>
-      <a href="https://github.com/worldpeaceenginelabs/CLOUD-ATLAS.peerset.DB" class="glass" style="padding: 8px; display: flex; align-items: center; text-decoration: none; transition: all 0.3s ease;">
+      <a href="https://github.com/worldpeaceenginelabs/CLOUD-ATLAS.peerset.DB" target="_blank" class="glass" style="padding: 8px; display: flex; align-items: center; text-decoration: none; transition: all 0.3s ease;">
         <img height="32" width="32" src="github.jpg" alt="GitHub Repository" style="border-radius: 8px;">
       </a>
     </div>
