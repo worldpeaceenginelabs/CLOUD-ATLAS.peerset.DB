@@ -35,6 +35,13 @@
   let hashMapStoreUpdateQueue: Array<{ uuid: string; hash: string }> = [];
   let isUpdatingHashMapStore = false;
   
+  // Batch merkle root recalculation optimization
+  let pendingMerkleUpdates: Record<string, NodeJS.Timeout> = {}; // Track pending updates per peer
+  let peerBatchTimings: Record<string, number[]> = {}; // Track batch arrival times per peer
+  const MIN_MERKLE_DELAY = 500; // Minimum delay
+  const MAX_MERKLE_DELAY = 5000; // Maximum delay (5 seconds)
+  const BATCH_TIMING_HISTORY = 5; // Keep last 5 batch timings for calculation
+  
   // --- Helper Functions ---
   function initPeer(peerId: string) {
     if (!peerTraffic[peerId]) {
@@ -54,6 +61,76 @@
     }
     delete syncInProgress[peerId];
     delete processingRecords[peerId];
+    
+    // Clean up pending merkle updates for this peer
+    if (pendingMerkleUpdates[peerId]) {
+      clearTimeout(pendingMerkleUpdates[peerId]);
+      delete pendingMerkleUpdates[peerId];
+    }
+    
+    // Clean up batch timing history
+    delete peerBatchTimings[peerId];
+  }
+
+  // Calculate adaptive delay based on peer's batch timing history
+  function calculateAdaptiveDelay(peerId: string): number {
+    const timings = peerBatchTimings[peerId];
+    if (!timings || timings.length < 2) {
+      return MIN_MERKLE_DELAY; // Use minimum delay for first batch or insufficient data
+    }
+    
+    // Calculate average time between batches
+    const intervals: number[] = [];
+    for (let i = 1; i < timings.length; i++) {
+      intervals.push(timings[i] - timings[i - 1]);
+    }
+    
+    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+    
+    // Use 2x the average interval as delay, but within bounds
+    const adaptiveDelay = Math.min(Math.max(avgInterval * 2, MIN_MERKLE_DELAY), MAX_MERKLE_DELAY);
+    
+    console.log(`[peerset.DB] Adaptive merkle delay for ${peerId}: ${adaptiveDelay}ms (avg interval: ${avgInterval}ms)`);
+    return adaptiveDelay;
+  }
+
+  // Record batch timing for adaptive delay calculation
+  function recordBatchTiming(peerId: string) {
+    const now = Date.now();
+    if (!peerBatchTimings[peerId]) {
+      peerBatchTimings[peerId] = [];
+    }
+    
+    peerBatchTimings[peerId].push(now);
+    
+    // Keep only recent history
+    if (peerBatchTimings[peerId].length > BATCH_TIMING_HISTORY) {
+      peerBatchTimings[peerId] = peerBatchTimings[peerId].slice(-BATCH_TIMING_HISTORY);
+    }
+  }
+
+  // Schedule merkle root recalculation with adaptive debouncing
+  function scheduleMerkleRootUpdate(peerId: string) {
+    // Clear any existing timeout for this peer
+    if (pendingMerkleUpdates[peerId]) {
+      clearTimeout(pendingMerkleUpdates[peerId]);
+    }
+    
+    // Calculate adaptive delay based on peer's batch timing history
+    const delay = calculateAdaptiveDelay(peerId);
+    
+    // Schedule new update after adaptive delay
+    pendingMerkleUpdates[peerId] = setTimeout(async () => {
+      console.log(`[peerset.DB] Recalculating merkle root after batch completion from ${peerId}`);
+      
+      // Update Merkle root using cached version
+      const hashes = get(hashMapStore);
+      const localMerkleRoot = await getMerkleTree(hashes);
+      merkleRoot.set(localMerkleRoot.hash);
+      
+      // Clean up the timeout
+      delete pendingMerkleUpdates[peerId];
+    }, delay);
   }
 
   // Handle reset stats event from UI component
@@ -269,6 +346,9 @@
         console.log(`[peerset.DB] 📥 Received ${incomingCount} records from ${peerId}:`, Object.keys(records));
         statReceivedRecords += incomingCount;
         peerTraffic[peerId].recv.records += incomingCount;
+        
+        // Record batch timing for adaptive delay calculation
+        recordBatchTiming(peerId);
     
         // Batch moderate all records at once
         const moderationResults = await moderateRecordsBatch(records);
@@ -305,10 +385,8 @@
     
         console.log(`[peerset.DB] Processed ${processedCount}/${incomingCount} records from ${peerId}`);
     
-        // Update Merkle root using cached version
-        const hashes = get(hashMapStore);
-        const localMerkleRoot = await getMerkleTree(hashes);
-        merkleRoot.set(localMerkleRoot.hash);
+        // Schedule merkle root recalculation (debounced for batching optimization)
+        scheduleMerkleRootUpdate(peerId);
 
         // Don't update lastActivity here to prevent immediate re-sync
         //       lastActivity[peerId] = Date.now();
