@@ -131,13 +131,12 @@
   // ✅ NEW: Check if we need to initiate reverse sync after receiving records
   async function checkAndInitiateReverseSync(peerId: string) {
     try {
-      // Get current local state after processing all received records
-      const localHashes = get(hashMapStore);
-      const localMerkleRoot = await getMerkleTree(localHashes);
+      // Use the debounced merkle root (newest) instead of recalculating
+      const localMerkleRootHash = get(merkleRoot);
       
       // Send our updated root hash to the peer
       console.log(`[peerset.DB] 🔄 Sending updated root hash to ${peerId} for reverse sync check`);
-      sendRootHash({ merkleRoot: localMerkleRoot.hash }, peerId);
+      sendRootHash({ merkleRoot: localMerkleRootHash }, peerId);
       peerTraffic[peerId].sent.rootHashes++;
       statRootHashesSent++;
       
@@ -312,10 +311,10 @@
       peerTraffic[peerId].recv.rootHashes++;
       statRootHashesReceived++;
 
-      const localHashes = get(hashMapStore);
-      const localMerkleRoot = await getMerkleTree(localHashes);
+      // Use the debounced merkle root (newest) instead of recalculating
+      const localMerkleRootHash = get(merkleRoot);
 
-      if (peerData.merkleRoot !== localMerkleRoot.hash) {
+      if (peerData.merkleRoot !== localMerkleRootHash) {
         console.log(`[peerset.DB] Root differs with peer ${peerId}. Starting stateless sync...`);
         
         // ✅ NEW: Check if we're currently processing records from this peer
@@ -338,6 +337,7 @@
         
         try {
           // Use efficient Merkle sync instead of sending full tree
+          const localHashes = get(hashMapStore);
           await EfficientMerkleSync.startSync(localHashes, peerData.merkleRoot, sendSubtree, peerId);
           
           // Reset sync state after timeout (increased for large datasets)

@@ -57,8 +57,8 @@
 
   // Handle manual send roothash event
   async function handleSendRootHash() {
-    const localHashes = get(hashMapStore);
-    const localMerkleRoot = await getMerkleTree(localHashes);
+    // Use the debounced merkle root (newest) instead of recalculating
+    const localMerkleRootHash = get(merkleRoot);
     
     // Send root hash to all connected peers
     const connectedPeers = Object.keys(peerTraffic);
@@ -71,7 +71,7 @@
     
     for (const peerId of connectedPeers) {
       try {
-        sendRootHashAction({ merkleRoot: localMerkleRoot.hash }, peerId);
+        sendRootHashAction({ merkleRoot: localMerkleRootHash }, peerId);
         peerTraffic[peerId].sent.rootHashes++;
         statRootHashesSent++;
       } catch (error) {
