@@ -15,9 +15,7 @@ export const initDB = async () => {
 // Save a single record - takes uuid and record separately
 export const saveRecord = async (uuid, record) => {
   const db = await initDB();
-  // Ensure the record has the uuid field that IndexedDB expects
-  const recordWithUuid = { ...record, uuid };
-  await db.put('records', recordWithUuid);
+  await db.put('records', record);
 };
 
 // Get all records and return as object with uuid keys (matching your app's expected format)
