@@ -46,47 +46,6 @@
   
   // --- Helper Functions ---
   
-  // Legacy support for old subtree protocol
-  async function handleLegacySubtreeRequest(request: any, peerId: string, localHashes: Record<string, string>) {
-    if (request.requestRoot) {
-      console.log(`[peerset.DB] 📤 Sending tree to ${peerId} for comparison (legacy)`);
-      const localMerkleRoot = await getMerkleTree(localHashes);
-      sendSubtree({ tree: localMerkleRoot }, peerId);
-      peerTraffic[peerId].sent.subtrees++;
-      return;
-    }
-    
-    if (request.tree) {
-      // Simple set difference (legacy behavior)
-      const ourRecords = new Set(Object.keys(localHashes));
-      const theirRecords = new Set(request.tree.uuids as string[]);
-      const weNeed = [...theirRecords].filter((uuid: string) => !ourRecords.has(uuid));
-      
-      if (weNeed.length > 0) {
-        console.log(`[peerset.DB] 🔍 Requesting ${weNeed.length} records from ${peerId} (legacy):`, weNeed);
-        sendSubtree({ requestUUIDs: weNeed }, peerId);
-        peerTraffic[peerId].sent.subtrees++;
-        statSubtreesExchanged++;
-      }
-    }
-    
-    if (request.requestUUIDs) {
-      const fullRecord = await getAllRecords();
-      const toSend: Record<string, any> = {};
-      for (const uuid of request.requestUUIDs) {
-        if (fullRecord[uuid]) {
-          toSend[uuid] = fullRecord[uuid];
-        }
-      }
-      
-      if (Object.keys(toSend).length > 0) {
-        console.log(`[peerset.DB] 📤 Sending ${Object.keys(toSend).length} records to ${peerId} (legacy):`, Object.keys(toSend));
-        sendRecords(toSend, peerId);
-        statRecordsSent += Object.keys(toSend).length;
-        peerTraffic[peerId].sent.records += Object.keys(toSend).length;
-      }
-    }
-  }
 
   function initPeer(peerId: string) {
     if (!peerTraffic[peerId]) {
@@ -446,11 +405,6 @@
           return;
         }
         
-        // Legacy support for old protocol
-        if (request.requestRoot || request.tree || request.requestUUIDs) {
-          console.log(`[peerset.DB] ⚠️  Using legacy sync protocol with ${peerId}`);
-          await handleLegacySubtreeRequest(request, peerId, localHashes);
-        }
         
       } catch (error) {
         console.error(`[peerset.DB] Error handling subtree request from ${peerId}:`, error);

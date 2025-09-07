@@ -19,11 +19,6 @@ export interface SubtreeRequest {
   
   // Final request for specific records
   requestRecords?: string[];
-  
-  // Legacy support
-  requestRoot?: boolean;
-  tree?: MerkleNode;
-  requestUUIDs?: string[];
 }
 
 /**
