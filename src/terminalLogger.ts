@@ -102,6 +102,40 @@ class TerminalLogger {
     const timestamp = new Date().toLocaleTimeString();
     console.log(`[${timestamp}] ${prefix}${direction} ${JSON.stringify(data, null, 2)}`);
   }
+
+  // Log detailed P2P data for debugging
+  logDetailedP2P(type: 'sent' | 'received', channel: 'rootHash' | 'records' | 'subtree', data: any, peerId: string) {
+    const prefix = `[${peerId.substring(0, 8)}] `;
+    const direction = type === 'sent' ? '→' : '←';
+    
+    let details = '';
+    if (channel === 'rootHash') {
+      details = `Root Hash: ${data.merkleRoot || 'unknown'}`;
+    } else if (channel === 'records') {
+      const count = Object.keys(data).length;
+      const sample = Object.keys(data).slice(0, 2).map(id => {
+        const record = data[id];
+        return `${id.substring(0, 8)}:${record.integrity?.hash?.substring(0, 8) || 'no-hash'}`;
+      }).join(', ');
+      details = `Records (${count}): ${sample}${count > 2 ? '...' : ''}`;
+    } else if (channel === 'subtree') {
+      if (data.requestSubtreeHashes) {
+        details = `Subtree Request: path="${data.requestSubtreeHashes.path || 'root'}" depth=${data.requestSubtreeHashes.depth}`;
+      } else if (data.subtreeHashes) {
+        const hashDetails = data.subtreeHashes.map(subtree => 
+          `${subtree.path}:${subtree.hash.substring(0, 8)}(${subtree.uuids.length}uuids)`
+        ).join(', ');
+        details = `Subtree Response (${data.subtreeHashes.length}): ${hashDetails}`;
+      } else if (data.requestRecords) {
+        const recordIds = data.requestRecords.slice(0, 3).map(id => id.substring(0, 8)).join(', ');
+        details = `Record Request (${data.requestRecords.length}): ${recordIds}${data.requestRecords.length > 3 ? '...' : ''}`;
+      } else {
+        details = `Subtree: ${JSON.stringify(data)}`;
+      }
+    }
+    
+    this.log(type, channel, details, peerId);
+  }
 }
 
 // Export singleton instance

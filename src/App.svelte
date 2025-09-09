@@ -332,7 +332,7 @@
       terminalLogger.logInternal('🔴 SENDING ROOT HASH: ' + JSON.stringify(rootHashData) + ' to peer: ' + peerId);
       sendRootHash(rootHashData, peerId);
       logP2PMessage(peerId, 'sent', 'rootHash', rootHashData);
-      terminalLogger.logP2PMessage('sent', 'rootHash', rootHashData, peerId);
+      terminalLogger.logDetailedP2P('sent', 'rootHash', rootHashData, peerId);
       terminalLogger.logInputOutput('output', rootHashData, peerId);
       peerTraffic[peerId].sent.rootHashes++;
       statRootHashesSent++;
@@ -360,7 +360,7 @@
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
       logP2PMessage(peerId, 'received', 'rootHash', peerData);
-      terminalLogger.logP2PMessage('received', 'rootHash', peerData, peerId);
+      terminalLogger.logDetailedP2P('received', 'rootHash', peerData, peerId);
       terminalLogger.logInputOutput('input', peerData, peerId);
       peerTraffic[peerId].recv.rootHashes++;
       statRootHashesReceived++;
@@ -420,7 +420,7 @@
       terminalLogger.logInternal('🟡 RECEIVED SUBTREE: ' + JSON.stringify(request) + ' from peer: ' + peerId);
       initPeer(peerId);
       logP2PMessage(peerId, 'received', 'subtree', request);
-      terminalLogger.logP2PMessage('received', 'subtree', request, peerId);
+      terminalLogger.logDetailedP2P('received', 'subtree', request, peerId);
       terminalLogger.logInputOutput('input', request, peerId);
       const localHashes = get(hashMapStore);
       
@@ -430,7 +430,7 @@
           terminalLogger.logSync(`Handling subtree hash request from ${peerId}`, peerId);
           await EfficientMerkleSync.handleSubtreeHashRequest(request, localHashes, (data, targetPeerId) => {
             logP2PMessage(targetPeerId, 'sent', 'subtree', data);
-            terminalLogger.logP2PMessage('sent', 'subtree', data, targetPeerId);
+            terminalLogger.logDetailedP2P('sent', 'subtree', data, targetPeerId);
             terminalLogger.logInputOutput('output', data, targetPeerId);
             sendSubtree(data, targetPeerId);
           }, peerId);
@@ -444,7 +444,7 @@
           terminalLogger.logSync(`Handling subtree hashes from ${peerId}`, peerId);
           const neededRecords = await EfficientMerkleSync.handleSubtreeHashes(request, localHashes, (data, targetPeerId) => {
             logP2PMessage(targetPeerId, 'sent', 'subtree', data);
-            terminalLogger.logP2PMessage('sent', 'subtree', data, targetPeerId);
+            terminalLogger.logDetailedP2P('sent', 'subtree', data, targetPeerId);
             terminalLogger.logInputOutput('output', data, targetPeerId);
             sendSubtree(data, targetPeerId);
           }, peerId);
@@ -475,7 +475,7 @@
             terminalLogger.logInternal('🔴 SENDING RECORDS: ' + Object.keys(toSend).length + ' records to peer: ' + peerId);
             sendRecords(toSend, peerId);
             logP2PMessage(peerId, 'sent', 'records', toSend);
-            terminalLogger.logP2PMessage('sent', 'records', toSend, peerId);
+            terminalLogger.logDetailedP2P('sent', 'records', toSend, peerId);
             terminalLogger.logInputOutput('output', toSend, peerId);
             statRecordsSent += Object.keys(toSend).length;
             peerTraffic[peerId].sent.records += Object.keys(toSend).length;
@@ -501,7 +501,7 @@
       processingRecords[peerId] = true;
       initPeer(peerId);
       logP2PMessage(peerId, 'received', 'records', records);
-      terminalLogger.logP2PMessage('received', 'records', records, peerId);
+      terminalLogger.logDetailedP2P('received', 'records', records, peerId);
       terminalLogger.logInputOutput('input', records, peerId);
 
       try {

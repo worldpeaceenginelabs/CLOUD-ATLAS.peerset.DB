@@ -20,6 +20,7 @@
   // Terminal window state
   let isMinimized = false;
   let isMaximized = false;
+  let expandedMessages: Set<number> = new Set();
   
   // Subscribe to terminal logger updates
   onMount(() => {
@@ -43,6 +44,16 @@
   function clearMessages() {
     terminalLogger.clear();
   }
+
+  // Function to toggle message expansion
+  function toggleMessageExpansion(index: number) {
+    if (expandedMessages.has(index)) {
+      expandedMessages.delete(index);
+    } else {
+      expandedMessages.add(index);
+    }
+    expandedMessages = expandedMessages; // Trigger reactivity
+  }
   
   // Function to format message for display
   function formatMessage(message: any): string {
@@ -50,22 +61,30 @@
     
     if (message.channel === 'rootHash') {
       if (message.data.merkleRoot) {
-        return `${peerInfo}Root Hash: ${message.data.merkleRoot.substring(0, 16)}...`;
+        return `${peerInfo}Root Hash: ${message.data.merkleRoot}`;
       }
       return `${peerInfo}Root Hash: ${JSON.stringify(message.data)}`;
     } else if (message.channel === 'records') {
       const recordCount = Object.keys(message.data).length;
       const recordIds = Object.keys(message.data).slice(0, 3);
-      return `${peerInfo}Records (${recordCount}): ${recordIds.join(', ')}${recordCount > 3 ? '...' : ''}`;
+      const recordDetails = recordIds.map(id => {
+        const record = message.data[id];
+        return `${id.substring(0, 8)}:${record.integrity?.hash?.substring(0, 8) || 'no-hash'}`;
+      }).join(', ');
+      return `${peerInfo}Records (${recordCount}): ${recordDetails}${recordCount > 3 ? '...' : ''}`;
     } else if (message.channel === 'subtree') {
       if (message.data.requestSubtreeHashes) {
-        return `${peerInfo}Subtree Request: ${message.data.requestSubtreeHashes.path || 'root'} (depth: ${message.data.requestSubtreeHashes.depth})`;
+        return `${peerInfo}Subtree Request: path="${message.data.requestSubtreeHashes.path || 'root'}" depth=${message.data.requestSubtreeHashes.depth}`;
       } else if (message.data.subtreeHashes) {
-        return `${peerInfo}Subtree Response: ${message.data.subtreeHashes.length} hashes`;
+        const hashDetails = message.data.subtreeHashes.map(subtree => 
+          `${subtree.path}:${subtree.hash.substring(0, 8)}(${subtree.uuids.length}uuids)`
+        ).join(', ');
+        return `${peerInfo}Subtree Response (${message.data.subtreeHashes.length}): ${hashDetails}`;
       } else if (message.data.requestRecords) {
-        return `${peerInfo}Record Request: ${message.data.requestRecords.length} records`;
+        const recordIds = message.data.requestRecords.slice(0, 5).map(id => id.substring(0, 8)).join(', ');
+        return `${peerInfo}Record Request (${message.data.requestRecords.length}): ${recordIds}${message.data.requestRecords.length > 5 ? '...' : ''}`;
       }
-      return `${peerInfo}Subtree: ${JSON.stringify(message.data).substring(0, 50)}...`;
+      return `${peerInfo}Subtree: ${JSON.stringify(message.data)}`;
     } else if (message.channel === 'connection') {
       return `${peerInfo}${message.data}`;
     } else if (message.channel === 'sync') {
@@ -137,7 +156,7 @@
         {#if !isMinimized}
           <div class="terminal-body">
             <div class="terminal-content">
-              {#each clientMessages as message}
+              {#each clientMessages as message, index}
                 <div class="message-block" 
                      class:sent={message.type === 'sent'} 
                      class:received={message.type === 'received'}
@@ -164,8 +183,18 @@
                       {/if}
                     </span>
                     <span class="channel">[{message.channel}]</span>
+                    {#if message.channel === 'rootHash' || message.channel === 'records' || message.channel === 'subtree'}
+                      <button class="expand-btn" on:click={() => toggleMessageExpansion(index)}>
+                        {expandedMessages.has(index) ? '▼' : '▶'}
+                      </button>
+                    {/if}
                   </div>
                   <div class="message-data">{formatMessage(message)}</div>
+                  {#if expandedMessages.has(index) && (message.channel === 'rootHash' || message.channel === 'records' || message.channel === 'subtree')}
+                    <div class="raw-data">
+                      <pre>{JSON.stringify(message.data, null, 2)}</pre>
+                    </div>
+                  {/if}
                 </div>
               {/each}
               {#if clientMessages.length === 0}
@@ -575,6 +604,41 @@
     color: var(--accent-warning);
     font-weight: bold;
     font-size: 10px;
+  }
+
+  .expand-btn {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 3px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 6px;
+    margin-left: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .expand-btn:hover {
+    background: var(--glass-bg-hover);
+    border-color: var(--glass-border-hover);
+  }
+
+  .raw-data {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    border-left: 2px solid var(--accent-primary);
+  }
+
+  .raw-data pre {
+    margin: 0;
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
   }
   
   
