@@ -321,7 +321,7 @@
     <div class="glass-card controls-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0; padding: 12px;">
       <!-- Number Input Square -->
       <div class="glass" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; text-align: center;">
-        <label for="generateCountInput" style="font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Count</label>
+        <label for="generateCountInput" style="font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">How many records to generate?</label>
         <input 
           id="generateCountInput" 
           type="number" 
