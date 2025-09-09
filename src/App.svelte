@@ -573,7 +573,7 @@
   });
   </script>
   
-  <main class="glass fade-in-up" style="margin: 0; padding: 16px; width: 100%; max-width: 100vw; min-height: 95vh; box-sizing: border-box;">
+  <main class="glass fade-in-up" style="margin: 0; padding: 16px; width: 100%; max-width: 100%; min-height: 95vh; box-sizing: border-box;">
     <div class="glass-card" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;">
       <h2 style="margin: 0; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
         peerset.DB

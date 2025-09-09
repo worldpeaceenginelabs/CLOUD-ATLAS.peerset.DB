@@ -188,6 +188,7 @@
     overflow: hidden;
     margin: 20px 0;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-sizing: border-box;
   }
   
   .datachannel-view:hover {
@@ -341,6 +342,130 @@
     height: 400px;
     overflow-y: auto;
     background: var(--glass-bg);
+  }
+  
+  /* Responsive adjustments for mobile screens */
+  @media (max-width: 480px) {
+    .datachannel-view {
+      margin: 10px 0;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .header {
+      padding: 12px 16px;
+    }
+    
+    .header h3 {
+      font-size: 16px;
+    }
+    
+    .terminal-container {
+      padding: 8px;
+    }
+    
+    .terminal-body {
+      height: 300px;
+    }
+    
+    .terminal-content {
+      padding: 8px;
+      font-size: 11px;
+    }
+    
+    .message-line {
+      gap: 6px;
+    }
+    
+    .timestamp {
+      font-size: 9px;
+    }
+    
+    .channel {
+      font-size: 9px;
+    }
+  }
+  
+  @media (max-width: 420px) {
+    .datachannel-view {
+      margin: 8px 0;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .header {
+      padding: 10px 12px;
+    }
+    
+    .header h3 {
+      font-size: 14px;
+    }
+    
+    .terminal-container {
+      padding: 6px;
+    }
+    
+    .terminal-body {
+      height: 250px;
+    }
+    
+    .terminal-content {
+      padding: 6px;
+      font-size: 10px;
+    }
+    
+    .message-line {
+      gap: 4px;
+    }
+    
+    .timestamp {
+      font-size: 8px;
+    }
+    
+    .channel {
+      font-size: 8px;
+    }
+  }
+  
+  @media (max-width: 360px) {
+    .datachannel-view {
+      margin: 6px 0;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .header {
+      padding: 8px 10px;
+    }
+    
+    .header h3 {
+      font-size: 12px;
+    }
+    
+    .terminal-container {
+      padding: 4px;
+    }
+    
+    .terminal-body {
+      height: 200px;
+    }
+    
+    .terminal-content {
+      padding: 4px;
+      font-size: 9px;
+    }
+    
+    .message-line {
+      gap: 3px;
+    }
+    
+    .timestamp {
+      font-size: 7px;
+    }
+    
+    .channel {
+      font-size: 7px;
+    }
   }
   
   .terminal-content {

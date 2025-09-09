@@ -265,14 +265,14 @@
   })();
 </script>
 
-<main>
-  <div style="margin: 0; padding: 0; width: 100%; height: 100%;">
+<main style="width: 100%; box-sizing: border-box;">
+  <div style="margin: 0; padding: 0; width: 100%; height: 100%; box-sizing: border-box;">
     
     <!-- 1. Data Channel View -->
     <DataChannelView {currentMerkleRoot} {p2pMessageData} />
 
     <!-- 2. Smaller Stats Table -->
-    <div class="glass-card" style="display: grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap: 8px; margin: 16px 0; padding: 12px;">
+    <div class="glass-card stats-grid" style="display: grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap: 8px; margin: 16px 0; padding: 12px;">
       <div class="glass" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; font-size: 11px; text-align: center;">
         <div style="font-weight: 600; color: var(--text-secondary); margin-bottom: 2px;">Peers</div>
         <div style="font-size: 16px; font-weight: 700; color: var(--accent-primary);">{peersOnline}</div>
@@ -292,7 +292,7 @@
     </div>
 
     <!-- 3. Five Squares in One Row -->
-    <div class="glass-card" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0; padding: 12px;">
+    <div class="glass-card controls-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0; padding: 12px;">
       <!-- Number Input Square -->
       <div class="glass" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; text-align: center;">
         <label for="generateCountInput" style="font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Count</label>
@@ -449,3 +449,96 @@
     </div>
   </div>
 </main>
+
+<style>
+  /* Responsive grid adjustments for mobile screens */
+  @media (max-width: 480px) {
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 6px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .controls-grid {
+      grid-template-columns: repeat(3, 1fr) !important;
+      gap: 6px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .controls-grid .glass {
+      padding: 6px !important;
+    }
+    
+    .controls-grid button {
+      font-size: 9px !important;
+      padding: 4px 6px !important;
+    }
+    
+    .controls-grid input {
+      font-size: 10px !important;
+      padding: 4px !important;
+    }
+  }
+  
+  @media (max-width: 420px) {
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 4px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .controls-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 4px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .controls-grid .glass {
+      padding: 4px !important;
+    }
+    
+    .controls-grid button {
+      font-size: 8px !important;
+      padding: 3px 4px !important;
+    }
+    
+    .controls-grid input {
+      font-size: 9px !important;
+      padding: 3px !important;
+    }
+  }
+  
+  @media (max-width: 360px) {
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 3px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .controls-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 3px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    .controls-grid .glass {
+      padding: 3px !important;
+    }
+    
+    .controls-grid button {
+      font-size: 7px !important;
+      padding: 2px 3px !important;
+    }
+    
+    .controls-grid input {
+      font-size: 8px !important;
+      padding: 2px !important;
+    }
+  }
+</style>
