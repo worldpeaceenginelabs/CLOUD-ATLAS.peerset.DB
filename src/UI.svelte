@@ -5,6 +5,7 @@
   import { get } from 'svelte/store';
   import { getMerkleTree } from './merkleTree.js';
   import DataChannelView from './DataChannelView.svelte';
+  import { terminalLogger } from './terminalLogger.js';
   
   const dispatch = createEventDispatcher();
 
@@ -62,21 +63,26 @@
   // Function to reset all stats
   function resetStats() {
     console.log('Reset Stats button clicked');
+    terminalLogger.logInternal('Reset Stats button clicked');
     dispatch('resetStats');
   }
 
   // Handle manual send roothash event
   async function handleSendRootHash() {
     console.log('handleSendRootHash called');
+    terminalLogger.logInternal('handleSendRootHash called');
     // Use the debounced merkle root (newest) instead of recalculating
     const localMerkleRootHash = get(merkleRoot);
     console.log('Local merkle root hash:', localMerkleRootHash);
+    terminalLogger.logInternal('Local merkle root hash: ' + localMerkleRootHash);
     
     // Send root hash to all connected peers
     const connectedPeers = Object.keys(peerTraffic);
     console.log('Connected peers:', connectedPeers);
+    terminalLogger.logInternal('Connected peers: ' + JSON.stringify(connectedPeers));
     if (connectedPeers.length === 0) {
       console.log('No connected peers, returning early');
+      terminalLogger.logInternal('No connected peers, returning early');
       return;
     }
     
@@ -87,8 +93,10 @@
     for (const peerId of connectedPeers) {
       try {
         console.log(`Sending root hash to peer: ${peerId}`);
+        terminalLogger.logInternal(`Sending root hash to peer: ${peerId}`);
         sendRootHashAction({ merkleRoot: localMerkleRootHash }, peerId);
         console.log(`Successfully sent root hash to peer: ${peerId}`);
+        terminalLogger.logInternal(`Successfully sent root hash to peer: ${peerId}`);
         updatedPeerTraffic[peerId] = {
           ...updatedPeerTraffic[peerId],
           sent: {
@@ -99,24 +107,29 @@
         updatedStatRootHashesSent++;
       } catch (error) {
         console.error('Error sending root hash to peer:', peerId, error);
+        terminalLogger.logError('Error sending root hash to peer: ' + peerId, error);
       }
     }
     
     // Trigger reactivity by dispatching update event to parent
     console.log('Dispatching updatePeerTraffic event');
+    terminalLogger.logInternal('Dispatching updatePeerTraffic event');
     dispatch('updatePeerTraffic', { 
       peerTraffic: updatedPeerTraffic, 
       statRootHashesSent: updatedStatRootHashesSent 
     });
     console.log('handleSendRootHash completed');
+    terminalLogger.logInternal('handleSendRootHash completed');
   }
 
   // Function to manually send root hash (wrapper for button click)
   function sendRootHash() {
     console.log('Send Root Hash button clicked');
     console.log('sendRootHashAction prop:', sendRootHashAction);
+    terminalLogger.logInternal('sendRootHashAction prop: ' + JSON.stringify(sendRootHashAction));
     if (!sendRootHashAction) {
       console.error('sendRootHashAction is not defined!');
+      terminalLogger.logError('sendRootHashAction is not defined!');
       return;
     }
     handleSendRootHash();
@@ -125,23 +138,29 @@
   // Function to reset the database (like F5 refresh)
   async function resetDatabase() {
     console.log('Reset Database button clicked');
+    terminalLogger.logInternal('Reset Database button clicked');
     try {
       console.log('Clearing database...');
+      terminalLogger.logInternal('Clearing database...');
       // Clear the IndexedDB
       await clearDatabase();
       
       console.log('Resetting stores...');
+      terminalLogger.logInternal('Resetting stores...');
       // Reset the stores
       hashMapStore.set({});
       merkleRoot.set('');
       
       console.log('Clearing local state...');
+      terminalLogger.logInternal('Clearing local state...');
       // Clear local state
       fullRecords = {};
       
       console.log('Database reset completed successfully');
+      terminalLogger.logInternal('Database reset completed successfully');
     } catch (error) {
       console.error('Error resetting database:', error);
+      terminalLogger.logError('Error resetting database', error);
       alert('Error resetting database: ' + error.message);
     }
   }
@@ -167,12 +186,15 @@
   // Function to generate records
   async function generateRecords() {
     console.log('Generate Records button clicked');
+    terminalLogger.logInternal('Generate Records button clicked');
     if (isGenerating) {
       console.log('Already generating, returning early');
+      terminalLogger.logInternal('Already generating, returning early');
       return; // Prevent multiple simultaneous generations
     }
     
     console.log('Starting record generation...');
+    terminalLogger.logInternal('Starting record generation...');
     isGenerating = true;
     try {
       const recordsBatch = {};
@@ -230,10 +252,13 @@
       
       // Refresh records to show the new ones
       console.log('Refreshing records...');
+      terminalLogger.logInternal('Refreshing records...');
       await refreshRecords();
       console.log('Record generation completed successfully');
+      terminalLogger.logInternal('Record generation completed successfully');
     } catch (error) {
       console.error('Error during record generation:', error);
+      terminalLogger.logError('Error during record generation', error);
     } finally {
       isGenerating = false;
     }
@@ -244,6 +269,7 @@
   $: if ($hashMapStore) {
     refreshRecords().catch(error => {
       console.error('Error refreshing records:', error);
+      terminalLogger.logError('Error refreshing records', error);
     });
   }
 

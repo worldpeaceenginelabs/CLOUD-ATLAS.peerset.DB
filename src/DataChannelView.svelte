@@ -138,7 +138,7 @@
           <div class="terminal-body">
             <div class="terminal-content">
               {#each clientMessages as message}
-                <div class="message-line" 
+                <div class="message-block" 
                      class:sent={message.type === 'sent'} 
                      class:received={message.type === 'received'}
                      class:system={message.type === 'system'}
@@ -148,22 +148,24 @@
                      class:level-warn={message.level === 'warn'}
                      class:level-error={message.level === 'error'}
                      class:level-debug={message.level === 'debug'}>
-                  <span class="timestamp">[{message.timestamp}]</span>
-                  <span class="direction">
-                    {#if message.type === 'sent'}
-                      →
-                    {:else if message.type === 'received'}
-                      ←
-                    {:else if message.type === 'system'}
-                      ⚙
-                    {:else if message.type === 'error'}
-                      ✗
-                    {:else if message.type === 'debug'}
-                      🔍
-                    {/if}
-                  </span>
-                  <span class="channel">[{message.channel}]</span>
-                  <span class="message-data">{formatMessage(message)}</span>
+                  <div class="message-header">
+                    <span class="timestamp">[{message.timestamp}]</span>
+                    <span class="direction">
+                      {#if message.type === 'sent'}
+                        →
+                      {:else if message.type === 'received'}
+                        ←
+                      {:else if message.type === 'system'}
+                        ⚙
+                      {:else if message.type === 'error'}
+                        ✗
+                      {:else if message.type === 'debug'}
+                        🔍
+                      {/if}
+                    </span>
+                    <span class="channel">[{message.channel}]</span>
+                  </div>
+                  <div class="message-data">{formatMessage(message)}</div>
                 </div>
               {/each}
               {#if clientMessages.length === 0}
@@ -373,8 +375,14 @@
       font-size: 11px;
     }
     
-    .message-line {
+    .message-block {
+      padding: 4px 6px;
+      margin-bottom: 6px;
+    }
+    
+    .message-header {
       gap: 6px;
+      font-size: 10px;
     }
     
     .timestamp {
@@ -414,8 +422,14 @@
       font-size: 10px;
     }
     
-    .message-line {
+    .message-block {
+      padding: 3px 5px;
+      margin-bottom: 5px;
+    }
+    
+    .message-header {
       gap: 4px;
+      font-size: 9px;
     }
     
     .timestamp {
@@ -455,8 +469,14 @@
       font-size: 9px;
     }
     
-    .message-line {
+    .message-block {
+      padding: 2px 4px;
+      margin-bottom: 4px;
+    }
+    
+    .message-header {
       gap: 3px;
+      font-size: 8px;
     }
     
     .timestamp {
@@ -475,52 +495,70 @@
     line-height: 1.5;
   }
   
-  .message-line {
-    margin-bottom: 2px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .message-block {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
   }
   
-  .message-line.sent {
-    color: var(--accent-success);
+  .message-block:hover {
+    background: rgba(255, 255, 255, 0.05);
   }
   
-  .message-line.received {
-    color: var(--accent-primary);
+  .message-block.sent {
+    border-left-color: var(--accent-success);
   }
   
-  .message-line.system {
-    color: var(--accent-warning);
+  .message-block.received {
+    border-left-color: var(--accent-primary);
   }
   
-  .message-line.error {
+  .message-block.system {
+    border-left-color: var(--accent-warning);
+  }
+  
+  .message-block.error {
     color: #ff4444;
     background: rgba(255, 68, 68, 0.1);
-    border-left: 2px solid #ff4444;
-    padding-left: 4px;
+    border-left-color: #ff4444;
   }
   
-  .message-line.debug {
+  .message-block.debug {
     color: var(--text-muted);
     opacity: 0.8;
   }
   
-  .message-line.level-warn {
+  .message-block.level-warn {
     background: rgba(255, 170, 0, 0.1);
-    border-left: 2px solid #ffaa00;
-    padding-left: 4px;
+    border-left-color: #ffaa00;
   }
   
-  .message-line.level-error {
+  .message-block.level-error {
     background: rgba(255, 68, 68, 0.1);
-    border-left: 2px solid #ff4444;
-    padding-left: 4px;
+    border-left-color: #ff4444;
   }
   
-  .message-line.level-debug {
+  .message-block.level-debug {
     opacity: 0.7;
+  }
+  
+  .message-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
     font-size: 11px;
+  }
+  
+  .message-data {
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.4;
+    padding-left: 0;
+    word-break: break-word;
   }
   
   .timestamp {
@@ -539,10 +577,6 @@
     font-size: 10px;
   }
   
-  .message-data {
-    color: var(--text-primary);
-    flex: 1;
-  }
   
   .no-messages {
     color: var(--text-muted);

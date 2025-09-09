@@ -184,6 +184,7 @@
     } catch (error) {
       terminalLogger.logError(`Error initiating reverse sync check with ${peerId}`, error, peerId);
       console.error(`[peerset.DB] Error initiating reverse sync check with ${peerId}:`, error);
+      terminalLogger.logError(`[peerset.DB] Error initiating reverse sync check with ${peerId}`, error, peerId);
     }
   }
 
@@ -328,6 +329,7 @@
       // ✅ Send only root hash first, not full tree
       const rootHashData = { merkleRoot: localMerkleRoot.hash };
       console.log('🔴 SENDING ROOT HASH:', rootHashData, 'to peer:', peerId);
+      terminalLogger.logInternal('🔴 SENDING ROOT HASH: ' + JSON.stringify(rootHashData) + ' to peer: ' + peerId);
       sendRootHash(rootHashData, peerId);
       logP2PMessage(peerId, 'sent', 'rootHash', rootHashData);
       terminalLogger.logP2PMessage('sent', 'rootHash', rootHashData, peerId);
@@ -354,6 +356,7 @@
     // 6. When one peer finishes, it sends updated root hash for reverse sync
     getRootHash(async (peerData, peerId) => {
       console.log('🔵 RECEIVED ROOT HASH:', peerData, 'from peer:', peerId);
+      terminalLogger.logInternal('🔵 RECEIVED ROOT HASH: ' + JSON.stringify(peerData) + ' from peer: ' + peerId);
       if (!peerTraffic[peerId]) return;
       initPeer(peerId);
       logP2PMessage(peerId, 'received', 'rootHash', peerData);
@@ -414,6 +417,7 @@
     // ✅ Efficient subtree handling using progressive Merkle sync
     getSubtree(async (request: SubtreeRequest, peerId) => {
       console.log('🟡 RECEIVED SUBTREE:', request, 'from peer:', peerId);
+      terminalLogger.logInternal('🟡 RECEIVED SUBTREE: ' + JSON.stringify(request) + ' from peer: ' + peerId);
       initPeer(peerId);
       logP2PMessage(peerId, 'received', 'subtree', request);
       terminalLogger.logP2PMessage('received', 'subtree', request, peerId);
@@ -468,6 +472,7 @@
           if (Object.keys(toSend).length > 0) {
             terminalLogger.logDatabase(`Sending ${Object.keys(toSend).length} records to ${peerId}`, peerId);
             console.log('🔴 SENDING RECORDS:', Object.keys(toSend).length, 'records to peer:', peerId);
+            terminalLogger.logInternal('🔴 SENDING RECORDS: ' + Object.keys(toSend).length + ' records to peer: ' + peerId);
             sendRecords(toSend, peerId);
             logP2PMessage(peerId, 'sent', 'records', toSend);
             terminalLogger.logP2PMessage('sent', 'records', toSend, peerId);
@@ -483,6 +488,7 @@
       } catch (error) {
         terminalLogger.logError(`Error handling subtree request from ${peerId}`, error, peerId);
         console.error(`[peerset.DB] Error handling subtree request from ${peerId}:`, error);
+        terminalLogger.logError(`[peerset.DB] Error handling subtree request from ${peerId}`, error, peerId);
       }
       
       lastActivity[peerId] = Date.now();
@@ -491,6 +497,7 @@
     // Receive records from peer (per-peer processing with batching)
     getRecords(async (records: Record<string, any>, peerId) => {
       console.log('🟢 RECEIVED RECORDS:', Object.keys(records).length, 'records from peer:', peerId);
+      terminalLogger.logInternal('🟢 RECEIVED RECORDS: ' + Object.keys(records).length + ' records from peer: ' + peerId);
       processingRecords[peerId] = true;
       initPeer(peerId);
       logP2PMessage(peerId, 'received', 'records', records);
@@ -563,6 +570,7 @@
       } catch (error) {
         terminalLogger.logError(`Error processing records from ${peerId}`, error, peerId);
         console.error(`[peerset.DB] Error processing records from ${peerId}:`, error);
+        terminalLogger.logError(`[peerset.DB] Error processing records from ${peerId}`, error, peerId);
         cleanupPeerSync(peerId);
       } finally {
         // Always release processing lock
