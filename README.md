@@ -7,7 +7,7 @@
 ## 👉 **"peerset.DB doesn’t care—drop anything you want:<br>raw, JSON, blob, audio, video, stream. Works out of the box.<br><br>No need to rethink your DB concept or spend an all-nighter configuring—literally plug the component and play.<br><br>Moderation? Your call: from ‘let it fly’ to ‘Fort Knox’.<br><br>The simplest way to plug a global, self-synchronizing swarm into your app."**
 <br><br><br>
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/4f7b71dc-62c4-48fa-ba78-4b7765cb416e" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/741d9210-e882-4a00-952b-12fe233d647b" />
 <br><br><br>
 
 ### **This is basically science fiction.**  
