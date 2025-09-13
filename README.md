@@ -1,10 +1,14 @@
 # 🚧 Under Construction but 99% working
 
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a46333c1-dfe7-4f17-8118-f75175d2f819" />
+<br><br><br>
 
 # 🚀 peerset.DB — The Database From the Future
-## 👉 **Think of `peerset.DB` as the simplest way to plug a global, self-synchronizing swarm into your app.**
-<br>
+## 👉 **"peerset.DB doesn’t care—drop anything you want:<br>raw, JSON, blob, audio, video, stream. Works out of the box.<br><br>No need to rethink your DB concept or spend an all-nighter configuring—literally plug the component and play.<br><br>Moderation? Your call: from ‘let it fly’ to ‘Fort Knox’.<br><br>The simplest way to plug a global, self-synchronizing swarm into your app."**
+<br><br><br>
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a4134a3a-166e-4cdf-a623-28888a516f69" />
+<br><br><br>
 
 ### **This is basically science fiction.**  
 
@@ -36,8 +40,6 @@ Anyone on Earth with a browser can join the swarm and instantly share data with 
 **LIVE DEMO:** Try it yourself — open duplicated windows on your laptop, phone, tablet, or across multiple devices.  
 👉 [cloud-atlas-peerset.pages.dev](https://cloud-atlas-peerset.pages.dev/)  
 It stupidly syncs everything you throw at it.
-<br>
-
 <br><br><br>
 
 ---
