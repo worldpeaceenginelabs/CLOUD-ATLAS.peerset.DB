@@ -7,7 +7,7 @@
 ## 👉 **"peerset.DB doesn’t care—drop anything you want:<br>raw, JSON, blob, audio, video, stream. Works out of the box.<br><br>No need to rethink your DB concept or spend an all-nighter configuring—literally plug the component and play.<br><br>Moderation? Your call: from ‘let it fly’ to ‘Fort Knox’.<br><br>The simplest way to plug a global, self-synchronizing swarm into your app."**
 <br><br><br>
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a4134a3a-166e-4cdf-a623-28888a516f69" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/b3618086-0a3e-43e7-bf6a-6b7675c0db04" />
 <br><br><br>
 
 ### **This is basically science fiction.**  
@@ -48,7 +48,7 @@ It stupidly syncs everything you throw at it.
 # ✅ Features Implemented
 
 - [x] Network Web UI
-<img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/1d76574e-89d7-445c-b90a-2e70ea67ea04" />
+<img width="1919" height="1017" alt="image" src="https://github.com/user-attachments/assets/c7ea64f0-ae3d-4c63-9f8a-0e73fb93c994" />
 <br><br><br>
 
 - [x] Decentralized peer-to-peer network using **[Trystero](https://github.com/dmotz/trystero)**: A hash of the room name is announced on the public **[BitTorrent](https://www.bittorrent.com/)** tracker network. Everyone interested in that UUID gets connected into a shared WebRTC buffer (our Trystero room)   
